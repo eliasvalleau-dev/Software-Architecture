@@ -3,99 +3,195 @@ workspace "Course Management System" "Level 4 Code View" {
     !identifiers hierarchical
 
     model {
+
         cms = softwareSystem "Course Management System" {
-            backend = container "Backend Application" {
 
-                # ==========================================
-                # 1. ENROLMENT API (Domain Pattern)
-                # ==========================================
-                group "Enrolment" {
-                    enrolmentApi = component "EnrolmentController" "- enrolmentService: EnrolmentService\n+ submitEnrolment()\n+ cancelEnrolment()" "Controller"
-                    enrolmentService = component "EnrolmentService" "- seatLockManager: SeatLockManager\n- sisAdapter: SisAdapter\n+ processEnrolment()" "Service"
-                    enrolmentRecord = component "EnrolmentRecord" "- enrolmentId: UUID\n- studentId: UUID\n- courseCode: String\n- status: Enum\n+ updateStatus()" "Domain Entity"
-                    registrationDetails = component "RegistrationDetails" "- enrolmentType: String\n- termSemester: String\n- registrationTimestamp: DateTime\n+ getSummary()" "Value Object"
+            backend = container "Backend" {
 
-                    enrolmentApi -> enrolmentService "delegates request"
-                    enrolmentService -> enrolmentRecord "creates entity"
-                    enrolmentRecord -> registrationDetails "assigns 1..1"
+                # =========================================================
+                # 1. ENROLMENT API
+                # =========================================================
+
+                group "Enrolment API" {
+
+                    enrolmentController = component "EnrolmentController" "- enrolmentService: EnrolmentService\n+ submitEnrolment()\n+ cancelEnrolment()\n+ getEnrolmentStatus()" "Spring MVC Controller"
+
+                    enrolmentService = component "EnrolmentService" "- availabilityManager: SeatAvailabilityManager\n- sisAdapter: SISAdapter\n+ processEnrolment()\n+ cancelEnrolment()\n+ checkEligibility()" "Spring Service"
+
+                    seatAvailabilityManager = component "SeatAvailabilityManager" "- cacheClient: RedisClient\n+ getAvailableSeats()\n+ reserveSeat()\n+ releaseSeat()" "Spring Bean"
+
+                    enrolmentQueue = component "EnrolmentQueue" "- queueClient: RedisClient\n+ queueRequest()\n+ processNextRequest()" "Spring Bean"
+
+                    enrolmentController -> enrolmentService "Delegates enrolment requests to"
+
+                    enrolmentService -> seatAvailabilityManager "Checks and reserves availability"
+
+                    enrolmentService -> enrolmentQueue "Queues enrolment requests during peak demand"
                 }
 
-                # ==========================================
-                # 2. COURSE OFFERINGS API (Domain Pattern)
-                # ==========================================
-                group "Course Offering" {
-                    courseApi = component "CourseOfferingController" "- courseService: CourseService\n+ getCatalog()\n+ checkPrerequisites()" "Controller"
-                    courseService = component "CourseService" "- courseRepo: Repository\n+ validateRequisites()" "Service"
-                    course = component "Course" "- courseId: UUID\n- code: String\n- maxQuota: Int\n+ getCatalogEntry()" "Domain Entity"
-                    prereqRule = component "PrerequisiteRule" "- ruleId: UUID\n- requiredCode: String\n+ evaluateEligibility()" "Value Object"
 
-                    courseApi -> courseService "fetches catalog state"
-                    courseService -> course "queries details"
-                    course -> prereqRule "evaluates 1..*"
+                # =========================================================
+                # 2. SUBJECT OFFERING API
+                # =========================================================
+
+                group "Subject Offering API" {
+
+                    subjectOfferingController = component "SubjectOfferingController" "- subjectOfferingService: SubjectOfferingService\n+ getSubjects()\n+ getOfferings()\n+ createOffering()\n+ updateOffering()" "Spring MVC Controller"
+
+                    subjectOfferingService = component "SubjectOfferingService" "- cacheClient: RedisClient\n+ getSubjectOfferings()\n+ createOffering()\n+ updateOffering()\n+ checkPrerequisite()" "Spring Service"
+
+                    subjectOfferingController -> subjectOfferingService "Delegates subject-offering requests to"
                 }
 
-                # ==========================================
-                # 3. ANALYTICS & REPORTING (Pipeline Pattern)
-                # ==========================================
-                group "Analytics" {
-                    analyticsApi = component "AnalyticsController" "- analyticsService: AnalyticsService\n+ requestPerformanceReport()\n+ getMetrics()" "Controller"
-                    analyticsService = component "AnalyticsService" "- reportingComponent: ReportingComponent\n+ calculatePerformanceMetrics()" "Service"
-                    reportingComponent = component "ReportingComponent" "- pdfGenerator: PdfGenerator\n+ compileStudentReport()\n+ generatePdf()" "Sub-Component Service"
-                    academicSummary = component "AcademicSummary" "- summaryId: UUID\n- scoreMetric: Double\n- generatedAt: DateTime\n+ render()" "State / Value Object"
 
-                    analyticsApi -> analyticsService "passes request"
-                    analyticsService -> reportingComponent "delegates PDF compilation"
-                    analyticsService -> academicSummary "persists summary"
+                # =========================================================
+                # 3. ANALYTICS API
+                # =========================================================
+
+                group "Analytics API" {
+
+                    analyticsController = component "AnalyticsController" "- analyticsService: AnalyticsService\n+ requestPerformanceReport()\n+ getPerformanceMetrics()" "Spring MVC Controller"
+
+                    analyticsService = component "AnalyticsService" "- reportingComponent: ReportingComponent\n+ calculatePerformanceMetrics()\n+ generatePerformanceReport()" "Spring Service"
+
+                    analyticsController -> analyticsService "Delegates analytics requests to"
                 }
 
-                # ==========================================
-                # 4. SIS ADAPTER (Adapter Pattern)
-                # ==========================================
+
+                # =========================================================
+                # 4. REPORTING COMPONENT
+                # =========================================================
+
+                group "Reporting Component" {
+
+                    reportingComponent = component "ReportingComponent" "- pdfGenerator: PdfGenerator\n+ compilePerformanceReport()\n+ generatePdf()" "Spring Bean"
+
+                    pdfGenerator = component "PdfGenerator" "+ createReport()\n+ exportPdf()" "Java PDF Library"
+
+                    reportingComponent -> pdfGenerator "Generates PDF reports"
+                }
+
+
+                # =========================================================
+                # 5. SIS ADAPTER
+                # =========================================================
+
                 group "SIS Adapter" {
-                    sisAdapter = component "SisAdapter" "- sisService: SisService\n+ checkAcademicStanding()\n+ syncStudentData()" "Adapter Facade"
-                    sisService = component "SisService" "- restTemplate: RestTemplate\n- mapper: SisDataMapper\n+ fetchProfile()\n+ queryAcademicRecord()" "Service"
-                    sisDataMapper = component "SisDataMapper" "+ mapToInternalProfile()\n+ mapToExternalRequest()" "Transformer Utility"
-                    externalStudentProfile = component "ExternalStudentProfile" "- sisStudentId: String\n- academicStanding: String\n- degreeProgram: String\n+ getProfileSummary()" "External DTO / Value Object"
-                    academicRecord = component "AcademicRecord" "- term: String\n- completedUnits: Int\n- standingStatus: String\n+ isEligible()" "Value Object"
 
-                    sisAdapter -> sisService "delegates external query"
-                    sisService -> sisDataMapper "uses transformer"
-                    sisDataMapper -> externalStudentProfile "maps payload into"
-                    externalStudentProfile -> academicRecord "contains 1..*"
+                    sisAdapter = component "SISAdapter" "- sisClient: SISClient\n- sisMapper: SISMapper\n+ verifyEligibility()\n+ synchroniseStudent()\n+ synchroniseEnrolment()" "Spring Bean / Adapter"
+
+                    sisClient = component "SISClient" "- restClient: RestClient\n+ getStudentProfile()\n+ getAcademicRecord()\n+ updateEnrolment()" "REST Client"
+
+                    sisMapper = component "SISMapper" "+ mapStudentProfile()\n+ mapAcademicRecord()\n+ mapEnrolment()" "Mapper Utility"
+
+                    sisAdapter -> sisClient "Delegates SIS requests"
+
+                    sisAdapter -> sisMapper "Maps SIS data to internal models"
                 }
 
-                # ==========================================
-                # 5. SECURITY (Filter Layer Authentication)
-                # ==========================================
-                group "Security" {
-                    securityComponent = component "SecurityComponent" "- authService: JWTAuthService\n+ configureRules()\n+ filterRequest()" "Security Facade"
-                    jwtAuthService = component "JWTAuthService" "- secretKey: String\n- tokenExpiry: Int\n+ validateToken()\n+ extractClaims()" "Service"
 
-                    securityComponent -> jwtAuthService "validates token claims"
+                # =========================================================
+                # 6. SECURITY COMPONENT
+                # =========================================================
+
+                group "Security Component" {
+
+                    securityComponent = component "SecurityComponent" "- tokenValidator: TokenValidator\n+ filterRequest()\n+ enforceAuthorisation()" "Spring Security Filter"
+
+                    tokenValidator = component "TokenValidator" "+ validateToken()\n+ extractClaims()\n+ validateRoles()" "OAuth2 / OIDC Validator"
+
+                    securityComponent -> tokenValidator "Validates access tokens and claims"
+
+                    securityComponent -> enrolmentController "Authorises requests"
+
+                    securityComponent -> subjectOfferingController "Authorises requests"
+
+                    securityComponent -> analyticsController "Authorises requests"
                 }
 
-                # ==========================================
-                # INTER-COMPONENT CROSS-SUBSYSTEM CONNECTIONS
-                # ==========================================
 
-                # Security filter intercepting incoming API controllers
-                securityComponent -> enrolmentApi "authenticates & authorizes"
-                securityComponent -> courseApi "authenticates & authorizes"
-                securityComponent -> analyticsApi "authenticates & authorizes"
+                # =========================================================
+                # 7. DOMAIN MODEL
+                # =========================================================
 
-                # Cross-subsystem workflows
-                enrolmentService -> sisAdapter "verifies student academic standing"
-                enrolmentService -> courseService "verifies course prerequisites"
+                group "Domain Model" {
+
+                    userEntity = component "User" "- userId: UUID\n- oktaSubject: String\n- email: String\n- name: String" "JPA Entity"
+
+                    studentEntity = component "Student" "- studentId: UUID\n- degreeProgram: String\n- academicStanding: String" "JPA Entity"
+
+                    facultyEntity = component "Faculty" "- facultyId: UUID\n- facultyType: String" "JPA Entity"
+
+                    subjectEntity = component "Subject" "- subjectCode: String\n- name: String\n- creditPoints: Int\n- prerequisiteSubjectId: UUID?" "JPA Entity"
+
+                    subjectOfferingEntity = component "Subject Offering" "- offeringId: UUID\n- term: String\n- section: String\n- capacity: Int\n- coordinatorId: UUID\n- enrolmentStart: DateTime\n- enrolmentEnd: DateTime\n- availability: Int" "JPA Entity"
+
+                    enrolmentEntity = component "Enrolment" "- enrolmentId: UUID\n- studentId: UUID\n- offeringId: UUID\n- status: EnrolmentStatus\n- timestamp: DateTime\n- waitlistSequence: Int" "JPA Entity"
+
+                    academicGradeEntity = component "Academic Grade" "- gradeId: UUID\n- enrolmentId: UUID\n- numericalGrade: Double\n- letterGrade: String" "JPA Entity"
+
+
+                    # Entity relationships
+
+                    studentEntity -> userEntity "Uses User ID as PK/FK"
+
+                    facultyEntity -> userEntity "Uses User ID as PK/FK"
+
+                    subjectOfferingEntity -> subjectEntity "References"
+
+                    subjectOfferingEntity -> facultyEntity "References coordinator"
+
+                    enrolmentEntity -> studentEntity "References"
+
+                    enrolmentEntity -> subjectOfferingEntity "References"
+
+                    academicGradeEntity -> enrolmentEntity "References"
+
+                    subjectEntity -> subjectEntity "May reference prerequisite subject"
+                }
+
+
+                # =========================================================
+                # APPLICATION → DOMAIN MODEL
+                # =========================================================
+
+                enrolmentService -> enrolmentEntity "Creates and updates"
+
+                enrolmentService -> studentEntity "Checks student standing"
+
+                enrolmentService -> subjectOfferingEntity "Checks capacity and availability"
+
+                enrolmentService -> subjectEntity "Checks prerequisite"
+
+                subjectOfferingService -> subjectEntity "Reads catalogue data"
+
+                subjectOfferingService -> subjectOfferingEntity "Manages offerings"
+
+                analyticsService -> academicGradeEntity "Queries performance data"
+
+
+                # =========================================================
+                # CROSS-SUBSYSTEM WORKFLOWS
+                # =========================================================
+
+                enrolmentService -> sisAdapter "Verifies academic eligibility"
+
+                analyticsService -> reportingComponent "Delegates report compilation"
             }
         }
     }
 
+
     views {
-        component cms.backend "OptionACodeView" "Level 4 Code View: Refined Domain Model" {
+
+        component cms.backend "CodeView" "Level 4 Code View: Backend Component Decomposition" {
             include *
+            autoLayout lr
         }
 
+
         styles {
+
             element "Element" {
                 background #ffffff
                 color #0f62fe
@@ -109,18 +205,9 @@ workspace "Course Management System" "Level 4 Code View" {
                 color #0f62fe
                 stroke #0f62fe
                 strokeWidth 4
-                shape roundedbox
+                shape Component
             }
 
-            element "Controller" {
-                background #ffffff
-                color #0f62fe
-                stroke #0f62fe
-                strokeWidth 4
-                shape roundedbox
-            }
-
-            # Invisible Software System & Container Boundaries
             element "Software System" {
                 background #ffffff
                 color #ffffff
@@ -140,5 +227,9 @@ workspace "Course Management System" "Level 4 Code View" {
                 color #0f62fe
             }
         }
+    }
+
+    configuration {
+        scope softwaresystem
     }
 }
