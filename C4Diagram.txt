@@ -1,0 +1,241 @@
+workspace "Course Management System" "Architectural Design and C4 Models" {
+
+    !identifiers hierarchical
+
+    model {
+        # Actors
+        student = person "Student" "Enrolls in subjects and tracks academic standing."
+        faculty = person "Faculty Member" "Oversees course offerings and reviews academic analytics."
+        admin = person "System Administrator" "Manages system access permissions and monitors operational health."
+
+        # External Software Systems
+        idp = softwareSystem "Identity & Access Management System" "Existing system handling user authentication and role authorization." {
+            tags "External IAM"
+        }
+        sis = softwareSystem "Student Information System" "Existing system holding master academic transcripts, student standing and official records." {
+            tags "External SIS"
+        }
+        analytics = softwareSystem "Enterprise Data Analytics System" "External BI and reporting platform that ingests generated reports and historical performance data." {
+            tags "External Reporting"
+        }
+
+        # Primary System Boundary
+        cms = softwareSystem "Course Management System" "Provides real-time course registration, academic record tracking and reporting analytics tools." {
+            tags "Primary System"
+
+            # Level 2 Containers
+            spa = container "Single-Page Application" "Provides course registration, availability tracking and academic reporting interfaces to users via their web browser." "React / TypeScript" {
+                tags "UI Container"
+            }
+
+            backend = container "Backend" "Executes business logic, processes enrolments and generates performance reports." "Java / Spring Boot" {
+                tags "Backend Container"
+
+                # Level 3 Streamlined Components
+                enrolmentApi = component "Enrolment API" "API endpoint for subject enrolment submissions, seat lock management, and write queuing." "Spring MVC Controller" {
+                    tags "Component"
+                }
+
+                courseApi = component "Course Offering API" "API endpoint for managing subject prerequisites, seat quotas and catalog state." "Spring MVC Controller" {
+                    tags "Component"
+                }
+
+                analyticsApi = component "Analytics API" "API endpoint for requesting academic performance summaries and report exports." "Spring MVC Controller" {
+                    tags "Component"
+                }
+
+                securityComponent = component "Security Component" "Configures SecurityFilterChain to intercept requests, validate JWT bearer tokens, and enforce session authorization logic." "Spring Security" {
+                    tags "Component"
+                }
+
+                reportingComponent = component "Reporting Component" "Compiles student analytics data and constructs PDF exports." "Spring Bean" {
+                    tags "Component"
+                }
+
+                sisAdapter = component "SIS Adapter" "Encapsulates REST client integration with the external Student Information System." "Spring Bean" {
+                    tags "Component"
+                }
+            }
+
+            cache = container "In-Memory Cache & Queue" "Caches active subject lists and buffers incoming enrolment submission traffic." "Redis" {
+                tags "Cache Store"
+            }
+            
+            db = container "Operational Relational Database" "Stores active subject offerings, seat quotas and enrolment logs." "Amazon RDS PostgreSQL (Multi-AZ)" {
+                tags "Database Store"
+            }
+
+            storage = container "Report & Backup Storage" "Stores generated PDF analytics reports and exported academic backups." "Amazon S3 Bucket" {
+                tags "S3 Bucket Store"
+            }
+
+            # Level 2 Container Relationships
+            spa -> backend "Sends API requests to" "JSON / HTTPS"
+            backend -> cache "Reads subject availability and queues enrolment requests in" "Redis Protocol"
+            backend -> db "Reads and writes subject, enrolment and grade records to" "SQL / JDBC"
+            backend -> storage "Saves and retrieves generated report files from" "AWS S3 API / HTTPS"
+
+            # Streamlined Level 3 Component Relationships
+            spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
+            spa -> backend.courseApi "Queries subject details and requisites via" "JSON / HTTPS"
+            spa -> backend.analyticsApi "Requests academic performance reports via" "JSON / HTTPS"
+
+            backend.enrolmentApi -> backend.securityComponent ""
+            backend.courseApi -> backend.securityComponent "Delegates session token validation to"
+            backend.analyticsApi -> backend.securityComponent ""
+
+            # Direct Datastore & Adapter Relationships from APIs
+            backend.enrolmentApi -> cache "Reads seat availability and buffers write requests in" "Redis Protocol"
+            backend.enrolmentApi -> db "Persists finalized enrolments to" "SQL / JDBC"
+            backend.enrolmentApi -> backend.sisAdapter "Verifies transcript eligibility and syncs enrolments via"
+
+            backend.courseApi -> cache "Caches updated subject offerings in" "Redis Protocol"
+            backend.courseApi -> db "Reads and writes subject records in" "SQL / JDBC"
+
+            backend.analyticsApi -> backend.reportingComponent "Delegates report compilation to"
+
+            # Internal Components to Storage & External Systems
+            backend.reportingComponent -> db "Queries aggregate student performance data from" "SQL / JDBC"
+            backend.reportingComponent -> storage "Saves generated PDF report files to" "AWS S3 API / HTTPS"
+
+            backend.securityComponent -> cache "Validates cached access tokens and session state in" "Redis Protocol"
+            backend.securityComponent -> idp "Validates authentication tokens with" "OAuth2 / OIDC"
+            backend.sisAdapter -> sis "Calls REST endpoints on" "HTTPS / REST API"
+            
+            # Single definition for Storage to Analytics pipeline:
+            cms.storage -> analytics "Streams exported PDF reports and analytics extracts to" "S3 Event Notifications / HTTPS"
+        }
+
+        # External Relationships: Actors to Primary System Containers
+        student -> cms.spa "Submits subject choices and checks availability via" "HTTPS"
+        faculty -> cms.spa "Configures subject requisites and views analytics via" "HTTPS"
+        admin -> cms.spa "Manages system configurations via" "HTTPS"
+    }
+
+    views {
+        systemContext cms "SystemContext" "Level 1: System Context Diagram for Course Management System" {
+            include *
+            autoLayout lr
+        }
+
+        container cms "ContainerView" "Level 2: Container Diagram for Course Management System" {
+            include *
+        }
+
+        component cms.backend "ComponentView" "Level 3: Component Diagram for API Backend Service" {
+            include *
+            include analytics
+        }
+
+        styles {
+            # Base Element Defaults
+            element "Element" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+                shape roundedbox
+            }
+
+            # Person: Green Border & Text, White Fill
+            element "Person" {
+                shape Person
+                background #ffffff
+                color #2a7e19
+                stroke #2a7e19
+                strokeWidth 4
+            }
+
+            # Level 2 UI: Browser Shape
+            element "UI Container" {
+                shape WebBrowser
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # Level 2 Backend: Rounded Box
+            element "Backend Container" {
+                shape roundedbox
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # Level 3 Component Shape
+            element "Component" {
+                shape Component
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # Persistent Relational Database
+            element "Database Store" {
+                shape Cylinder
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # In-Memory Cache (Pipe Shape)
+            element "Cache Store" {
+                shape Pipe
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # S3 / File Store: Bucket Shape
+            element "S3 Bucket Store" {
+                shape Bucket
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            # External System 1: IAM (Red Border & Text)
+            element "External IAM" {
+                shape roundedbox
+                background #ffffff
+                color #da1e28
+                stroke #da1e28
+                strokeWidth 4
+            }
+
+            # External System 2: Core SIS (Orange Border & Text)
+            element "External SIS" {
+                shape roundedbox
+                background #ffffff
+                color #d97706
+                stroke #d97706
+                strokeWidth 4
+            }
+            
+            # External System 3: Analytics / Reporting (Purple Border & Text)
+            element "External Reporting" {
+                shape roundedbox
+                background "#ffffff"
+                color "#8a3ffc"
+                stroke "#8a3ffc"
+                strokeWidth 4
+            }
+
+            # Relationships
+            relationship "Relationship" {
+                thickness 2
+                color #444444
+            }
+        }
+    }
+
+    configuration {
+        scope softwaresystem
+    }
+}

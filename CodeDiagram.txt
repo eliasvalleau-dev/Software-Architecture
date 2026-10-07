@@ -1,0 +1,144 @@
+workspace "Course Management System" "Level 4 Code View" {
+
+    !identifiers hierarchical
+
+    model {
+        cms = softwareSystem "Course Management System" {
+            backend = container "Backend Application" {
+
+                # ==========================================
+                # 1. ENROLMENT API (Domain Pattern)
+                # ==========================================
+                group "Enrolment" {
+                    enrolmentApi = component "EnrolmentController" "- enrolmentService: EnrolmentService\n+ submitEnrolment()\n+ cancelEnrolment()" "Controller"
+                    enrolmentService = component "EnrolmentService" "- seatLockManager: SeatLockManager\n- sisAdapter: SisAdapter\n+ processEnrolment()" "Service"
+                    enrolmentRecord = component "EnrolmentRecord" "- enrolmentId: UUID\n- studentId: UUID\n- courseCode: String\n- status: Enum\n+ updateStatus()" "Domain Entity"
+                    registrationDetails = component "RegistrationDetails" "- enrolmentType: String\n- termSemester: String\n- registrationTimestamp: DateTime\n+ getSummary()" "Value Object"
+
+                    enrolmentApi -> enrolmentService "delegates request"
+                    enrolmentService -> enrolmentRecord "creates entity"
+                    enrolmentRecord -> registrationDetails "assigns 1..1"
+                }
+
+                # ==========================================
+                # 2. COURSE OFFERINGS API (Domain Pattern)
+                # ==========================================
+                group "Course Offering" {
+                    courseApi = component "CourseOfferingController" "- courseService: CourseService\n+ getCatalog()\n+ checkPrerequisites()" "Controller"
+                    courseService = component "CourseService" "- courseRepo: Repository\n+ validateRequisites()" "Service"
+                    course = component "Course" "- courseId: UUID\n- code: String\n- maxQuota: Int\n+ getCatalogEntry()" "Domain Entity"
+                    prereqRule = component "PrerequisiteRule" "- ruleId: UUID\n- requiredCode: String\n+ evaluateEligibility()" "Value Object"
+
+                    courseApi -> courseService "fetches catalog state"
+                    courseService -> course "queries details"
+                    course -> prereqRule "evaluates 1..*"
+                }
+
+                # ==========================================
+                # 3. ANALYTICS & REPORTING (Pipeline Pattern)
+                # ==========================================
+                group "Analytics" {
+                    analyticsApi = component "AnalyticsController" "- analyticsService: AnalyticsService\n+ requestPerformanceReport()\n+ getMetrics()" "Controller"
+                    analyticsService = component "AnalyticsService" "- reportingComponent: ReportingComponent\n+ calculatePerformanceMetrics()" "Service"
+                    reportingComponent = component "ReportingComponent" "- pdfGenerator: PdfGenerator\n+ compileStudentReport()\n+ generatePdf()" "Sub-Component Service"
+                    academicSummary = component "AcademicSummary" "- summaryId: UUID\n- scoreMetric: Double\n- generatedAt: DateTime\n+ render()" "State / Value Object"
+
+                    analyticsApi -> analyticsService "passes request"
+                    analyticsService -> reportingComponent "delegates PDF compilation"
+                    analyticsService -> academicSummary "persists summary"
+                }
+
+                # ==========================================
+                # 4. SIS ADAPTER (Adapter Pattern)
+                # ==========================================
+                group "SIS Adapter" {
+                    sisAdapter = component "SisAdapter" "- sisService: SisService\n+ checkAcademicStanding()\n+ syncStudentData()" "Adapter Facade"
+                    sisService = component "SisService" "- restTemplate: RestTemplate\n- mapper: SisDataMapper\n+ fetchProfile()\n+ queryAcademicRecord()" "Service"
+                    sisDataMapper = component "SisDataMapper" "+ mapToInternalProfile()\n+ mapToExternalRequest()" "Transformer Utility"
+                    externalStudentProfile = component "ExternalStudentProfile" "- sisStudentId: String\n- academicStanding: String\n- degreeProgram: String\n+ getProfileSummary()" "External DTO / Value Object"
+                    academicRecord = component "AcademicRecord" "- term: String\n- completedUnits: Int\n- standingStatus: String\n+ isEligible()" "Value Object"
+
+                    sisAdapter -> sisService "delegates external query"
+                    sisService -> sisDataMapper "uses transformer"
+                    sisDataMapper -> externalStudentProfile "maps payload into"
+                    externalStudentProfile -> academicRecord "contains 1..*"
+                }
+
+                # ==========================================
+                # 5. SECURITY (Filter Layer Authentication)
+                # ==========================================
+                group "Security" {
+                    securityComponent = component "SecurityComponent" "- authService: JWTAuthService\n+ configureRules()\n+ filterRequest()" "Security Facade"
+                    jwtAuthService = component "JWTAuthService" "- secretKey: String\n- tokenExpiry: Int\n+ validateToken()\n+ extractClaims()" "Service"
+
+                    securityComponent -> jwtAuthService "validates token claims"
+                }
+
+                # ==========================================
+                # INTER-COMPONENT CROSS-SUBSYSTEM CONNECTIONS
+                # ==========================================
+
+                # Security filter intercepting incoming API controllers
+                securityComponent -> enrolmentApi "authenticates & authorizes"
+                securityComponent -> courseApi "authenticates & authorizes"
+                securityComponent -> analyticsApi "authenticates & authorizes"
+
+                # Cross-subsystem workflows
+                enrolmentService -> sisAdapter "verifies student academic standing"
+                enrolmentService -> courseService "verifies course prerequisites"
+            }
+        }
+    }
+
+    views {
+        component cms.backend "OptionACodeView" "Level 4 Code View: Refined Domain Model" {
+            include *
+        }
+
+        styles {
+            element "Element" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+                shape roundedbox
+            }
+
+            element "Component" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+                shape roundedbox
+            }
+
+            element "Controller" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+                shape roundedbox
+            }
+
+            # Invisible Software System & Container Boundaries
+            element "Software System" {
+                background #ffffff
+                color #ffffff
+                stroke #ffffff
+                strokeWidth 0
+            }
+
+            element "Container" {
+                background #ffffff
+                color #ffffff
+                stroke #ffffff
+                strokeWidth 0
+            }
+
+            relationship "Relationship" {
+                thickness 2
+                color #0f62fe
+            }
+        }
+    }
+}
