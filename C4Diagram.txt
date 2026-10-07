@@ -5,14 +5,14 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
     model {
         # Actors
         student = person "Student" "Enrolls in subjects and tracks academic standing."
-        faculty = person "Faculty Member" "Oversees course offerings and reviews academic analytics."
+        faculty = person "Faculty Member" "Manages subject offerings and reviews academic analytics."
         admin = person "System Administrator" "Manages system access permissions and monitors operational health."
 
         # External Software Systems
-        idp = softwareSystem "Identity & Access Management System" "Existing system handling user authentication and role authorization." {
+        idp = softwareSystem "Okta Identity & Access Management" "External Okta service that authenticates users and supplies signed role or group claims." {
             tags "External IAM"
         }
-        sis = softwareSystem "Student Information System" "Existing system holding master academic transcripts, student standing and official records." {
+        sis = softwareSystem "Student Information System" "Existing system holding master profiles, academic standing, subject catalogue, and official academic grades." {
             tags "External SIS"
         }
         analytics = softwareSystem "Enterprise Data Analytics System" "External BI and reporting platform that ingests generated reports and historical performance data." {
@@ -20,23 +20,23 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         }
 
         # Primary System Boundary
-        cms = softwareSystem "Course Management System" "Provides real-time course registration, academic record tracking and reporting analytics tools." {
+        cms = softwareSystem "Course Management System" "Provides real-time subject-offering enrolment, academic-grade tracking, and reporting analytics tools." {
             tags "Primary System"
 
             # Level 2 Containers
-            spa = container "Single-Page Application" "Provides course registration, availability tracking and academic reporting interfaces to users via their web browser." "React / TypeScript" {
+            spa = container "Single-Page Application" "Provides subject-offering enrolment, availability tracking, and academic reporting interfaces through a web browser." "React / TypeScript" {
                 tags "UI Container"
             }
 
-            backend = container "Backend" "Executes business logic, processes enrolments and generates performance reports." "Java / Spring Boot" {
+            backend = container "Backend" "Executes business logic, processes enrolments against subject offerings, and generates performance reports." "Java / Spring Boot" {
                 tags "Backend Container"
 
-                # Level 3 Streamlined Components
-                enrolmentApi = component "Enrolment API" "API endpoint for subject enrolment submissions, seat lock management, and write queuing." "Spring MVC Controller" {
+                # Level 3 Application Components
+                enrolmentApi = component "Enrolment API" "Accepts enrolment requests, checks offering capacity, manages waitlisting, and queues requests during peak demand." "Spring MVC Controller" {
                     tags "Component"
                 }
 
-                courseApi = component "Course Offering API" "API endpoint for managing subject prerequisites, seat quotas and catalog state." "Spring MVC Controller" {
+                subjectOfferingApi = component "Subject Offering API" "Manages subject offerings, including term, section, capacity, coordinator, enrolment window, and availability." "Spring MVC Controller" {
                     tags "Component"
                 }
 
@@ -44,7 +44,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                     tags "Component"
                 }
 
-                securityComponent = component "Security Component" "Configures SecurityFilterChain to intercept requests, validate JWT bearer tokens, and enforce session authorization logic." "Spring Security" {
+                securityComponent = component "Security Component" "Intercepts requests, validates signed Okta access tokens and claims, and enforces session authorisation." "Spring Security" {
                     tags "Component"
                 }
 
@@ -55,13 +55,42 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 sisAdapter = component "SIS Adapter" "Encapsulates REST client integration with the external Student Information System." "Spring Bean" {
                     tags "Component"
                 }
+
+                # P2SDS Logical Data Model
+                userEntity = component "User" "Stores shared identity and contact details, including the Okta identity-provider subject reference." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                studentEntity = component "Student" "Stores student ID, degree program, and academic standing. Uses User ID as its primary and foreign key." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                facultyEntity = component "Faculty" "Stores faculty ID and faculty type. Uses User ID as its primary and foreign key." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                subjectEntity = component "Subject" "Stores catalogue subject code, name, credit points, and an optional simple prerequisite subject." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                subjectOfferingEntity = component "Subject Offering" "Stores one term-specific subject instance, including section, coordinator, capacity, enrolment window, and availability." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                enrolmentEntity = component "Enrolment" "Links a student to a subject offering and records Enrolled, Waitlisted, or Dropped status, timestamps, and waitlist sequence." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
+
+                academicGradeEntity = component "Academic Grade" "Stores the final numerical and letter grade for an enrolment." "JPA Entity / Logical Data Model" {
+                    tags "Component"
+                }
             }
 
-            cache = container "In-Memory Cache & Queue" "Caches active subject lists and buffers incoming enrolment submission traffic." "Redis" {
+            cache = container "In-Memory Cache & Queue" "Caches active subject-offering availability and buffers incoming enrolment requests." "Redis" {
                 tags "Cache Store"
             }
-            
-            db = container "Operational Relational Database" "Stores active subject offerings, seat quotas and enrolment logs." "Amazon RDS PostgreSQL (Multi-AZ)" {
+
+            db = container "Operational Relational Database" "Stores Users, Students, Faculty, Subjects, Subject Offerings, Enrolments, and Academic Grades." "Amazon RDS PostgreSQL (Multi-AZ)" {
                 tags "Database Store"
             }
 
@@ -71,44 +100,61 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 
             # Level 2 Container Relationships
             spa -> backend "Sends API requests to" "JSON / HTTPS"
-            backend -> cache "Reads subject availability and queues enrolment requests in" "Redis Protocol"
-            backend -> db "Reads and writes subject, enrolment and grade records to" "SQL / JDBC"
+            backend -> cache "Reads subject-offering availability and queues enrolment requests in" "Redis Protocol"
+            backend -> db "Reads and writes P2SDS records to" "SQL / JDBC"
             backend -> storage "Saves and retrieves generated report files from" "AWS S3 API / HTTPS"
 
-            # Streamlined Level 3 Component Relationships
+            # Level 3 Component Relationships
             spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
-            spa -> backend.courseApi "Queries subject details and requisites via" "JSON / HTTPS"
+            spa -> backend.subjectOfferingApi "Queries subject details and offered sections via" "JSON / HTTPS"
             spa -> backend.analyticsApi "Requests academic performance reports via" "JSON / HTTPS"
 
-            backend.enrolmentApi -> backend.securityComponent ""
-            backend.courseApi -> backend.securityComponent "Delegates session token validation to"
-            backend.analyticsApi -> backend.securityComponent ""
+            backend.enrolmentApi -> backend.securityComponent "Delegates access-token validation to"
+            backend.subjectOfferingApi -> backend.securityComponent "Delegates access-token validation to"
+            backend.analyticsApi -> backend.securityComponent "Delegates access-token validation to"
 
-            # Direct Datastore & Adapter Relationships from APIs
+            # Enrolment and subject-offering behaviour
+            backend.enrolmentApi -> backend.enrolmentEntity "Creates and updates"
+            backend.enrolmentApi -> backend.studentEntity "Checks student standing for"
+            backend.enrolmentApi -> backend.subjectOfferingEntity "Checks capacity and availability for"
+            backend.enrolmentApi -> backend.subjectEntity "Checks simple prerequisite for"
             backend.enrolmentApi -> cache "Reads seat availability and buffers write requests in" "Redis Protocol"
-            backend.enrolmentApi -> db "Persists finalized enrolments to" "SQL / JDBC"
-            backend.enrolmentApi -> backend.sisAdapter "Verifies transcript eligibility and syncs enrolments via"
+            backend.enrolmentApi -> db "Persists enrolments and waitlist state to" "SQL / JDBC"
+            backend.enrolmentApi -> backend.sisAdapter "Verifies transcript eligibility and synchronises enrolments via"
 
-            backend.courseApi -> cache "Caches updated subject offerings in" "Redis Protocol"
-            backend.courseApi -> db "Reads and writes subject records in" "SQL / JDBC"
+            backend.subjectOfferingApi -> backend.subjectOfferingEntity "Manages"
+            backend.subjectOfferingApi -> backend.subjectEntity "Reads catalogue and prerequisite data from"
+            backend.subjectOfferingApi -> cache "Caches updated subject offerings in" "Redis Protocol"
+            backend.subjectOfferingApi -> db "Reads and writes subject and offering records in" "SQL / JDBC"
 
+            # Analytics and reporting
             backend.analyticsApi -> backend.reportingComponent "Delegates report compilation to"
-
-            # Internal Components to Storage & External Systems
+            backend.reportingComponent -> backend.academicGradeEntity "Queries performance data from"
             backend.reportingComponent -> db "Queries aggregate student performance data from" "SQL / JDBC"
             backend.reportingComponent -> storage "Saves generated PDF report files to" "AWS S3 API / HTTPS"
 
-            backend.securityComponent -> cache "Validates cached access tokens and session state in" "Redis Protocol"
-            backend.securityComponent -> idp "Validates authentication tokens with" "OAuth2 / OIDC"
+            # P2SDS logical entity relationships
+            backend.studentEntity -> backend.userEntity "Uses User ID as PK/FK"
+            backend.facultyEntity -> backend.userEntity "Uses User ID as PK/FK"
+            backend.subjectOfferingEntity -> backend.subjectEntity "Is one scheduled offering of"
+            backend.subjectOfferingEntity -> backend.facultyEntity "Has one coordinator"
+            backend.enrolmentEntity -> backend.studentEntity "References"
+            backend.enrolmentEntity -> backend.subjectOfferingEntity "References"
+            backend.academicGradeEntity -> backend.enrolmentEntity "Is produced from"
+            backend.subjectEntity -> backend.subjectEntity "May require one prerequisite subject"
+
+            # Security and external integration
+            backend.securityComponent -> cache "Validates cached session state in" "Redis Protocol"
+            backend.securityComponent -> idp "Uses Okta for user authentication and signed role or group claims via" "OAuth2 / OIDC"
             backend.sisAdapter -> sis "Calls REST endpoints on" "HTTPS / REST API"
-            
-            # Single definition for Storage to Analytics pipeline:
+
+            # Analytics pipeline
             cms.storage -> analytics "Streams exported PDF reports and analytics extracts to" "S3 Event Notifications / HTTPS"
         }
 
         # External Relationships: Actors to Primary System Containers
-        student -> cms.spa "Submits subject choices and checks availability via" "HTTPS"
-        faculty -> cms.spa "Configures subject requisites and views analytics via" "HTTPS"
+        student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
+        faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
     }
 
@@ -182,7 +228,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 strokeWidth 4
             }
 
-            # In-Memory Cache (Pipe Shape)
+            # In-Memory Cache
             element "Cache Store" {
                 shape Pipe
                 background #ffffff
@@ -191,7 +237,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 strokeWidth 4
             }
 
-            # S3 / File Store: Bucket Shape
+            # S3 / File Store
             element "S3 Bucket Store" {
                 shape Bucket
                 background #ffffff
@@ -200,7 +246,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 strokeWidth 4
             }
 
-            # External System 1: IAM (Red Border & Text)
+            # External IAM
             element "External IAM" {
                 shape roundedbox
                 background #ffffff
@@ -209,7 +255,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 strokeWidth 4
             }
 
-            # External System 2: Core SIS (Orange Border & Text)
+            # External SIS
             element "External SIS" {
                 shape roundedbox
                 background #ffffff
@@ -217,8 +263,8 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 stroke #d97706
                 strokeWidth 4
             }
-            
-            # External System 3: Analytics / Reporting (Purple Border & Text)
+
+            # External Reporting
             element "External Reporting" {
                 shape roundedbox
                 background "#ffffff"
