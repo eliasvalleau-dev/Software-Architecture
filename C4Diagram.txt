@@ -150,6 +150,14 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 
             # Analytics pipeline
             cms.storage -> analytics "Streams exported PDF reports and analytics extracts to" "S3 Event Notifications / HTTPS"
+
+            #Dynamic Diagram Information
+            spa -> backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
+            backend.enrolmentApi -> spa "Validates access token and permissions " "JSON/HTTPS"
+            backend.enrolmentApi -> backend.securityComponent "Validates request using" 
+            backend.securityComponent -> backend.enrolmentApi "Issues an access token if request succeeds" 
+            backend.securityComponent -> db "select * from users where = ?" "SQL Query"
+            db -> backend.securityComponent "Returns user enrolment data to" "SQL Query"
         }
 
         # External Relationships: Actors to Primary System Containers
@@ -171,6 +179,17 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         component cms.backend "ComponentView" "Level 3: Component Diagram for API Backend Service" {
             include *
             include analytics
+        }
+
+        dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
+        
+            cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
+            cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
+            cms.backend.enrolmentApi -> cms.backend.securityComponent "Validates request using" 
+            cms.backend.securityComponent -> cms.backend.enrolmentApi "Issues an access token if request succeeds" 
+            cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
+            cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
+            autoLayout lr
         }
 
         styles {
