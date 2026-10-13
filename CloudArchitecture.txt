@@ -1,0 +1,328 @@
+workspace "University Course Management System" "AWS Production Deployment Architecture" {
+
+    !identifiers hierarchical
+
+    model {
+
+        student = person "Student" "Accesses subject offerings, enrolments and academic records."
+        faculty = person "Faculty Member" "Manages subject offerings and academic reports."
+        admin = person "System Administrator" "Monitors and maintains the platform."
+
+        okta = softwareSystem "Okta Identity Provider" "External university authentication and MFA service." {
+            tags "External"
+        }
+
+        sis = softwareSystem "Student Information System" "External university system with unspecified hosting." {
+            tags "External"
+        }
+
+        analytics = softwareSystem "Enterprise Analytics System" "Optional external analytics integration." {
+            tags "External"
+        }
+
+        cms = softwareSystem "Course Management System" "University enrolment and academic records platform." {
+
+            frontend = container "React SPA" "Student and faculty browser interface." "React / TypeScript" {
+                tags "Frontend"
+            }
+
+            cloudfront = container "CloudFront Distribution" "Public entry point for frontend and API requests." "Amazon CloudFront" {
+                tags "Edge"
+            }
+
+            waf = container "Web Application Firewall" "Filters malicious HTTP traffic." "AWS WAF" {
+                tags "Security"
+            }
+
+            frontendStorage = container "Frontend S3 Bucket" "Stores compiled React assets." "Amazon S3" {
+                tags "Storage"
+            }
+
+            alb = container "Internal Application Load Balancer" "Distributes requests to healthy backend tasks." "AWS ALB" {
+                tags "Load Balancer"
+            }
+
+            backend = container "Spring Boot Backend" "Enrolment, subject offerings, analytics, reporting, SIS integration and BFF authentication." "Java / Spring Boot / ECS Fargate" {
+                tags "Backend"
+            }
+
+            db = container "Operational Database" "Stores enrolments, academic records and transactional audit events." "Amazon RDS PostgreSQL" {
+                tags "Database"
+            }
+
+            redis = container "Session and Availability Cache" "Shared sessions, cached availability and Pub/Sub events." "Amazon ElastiCache Redis" {
+                tags "Cache"
+            }
+
+            reports = container "Reports S3 Bucket" "Stores PDF reports and exported academic information." "Amazon S3" {
+                tags "Storage"
+            }
+
+            secrets = container "Secrets Manager" "Stores application credentials and Okta client secrets." "AWS Secrets Manager" {
+                tags "Security"
+            }
+
+            logging = container "CloudWatch Logs" "Collects application logs and operational events." "Amazon CloudWatch" {
+                tags "Operations"
+            }
+
+            registry = container "Container Registry" "Stores the Spring Boot Docker image." "Amazon ECR" {
+                tags "Operations"
+            }
+        }
+
+        student -> cms.frontend "Uses" "HTTPS"
+        faculty -> cms.frontend "Uses" "HTTPS"
+        admin -> cms.frontend "Administers through" "HTTPS"
+
+        cms.frontend -> cms.cloudfront "Loads application and calls APIs" "HTTPS 443"
+        cms.cloudfront -> cms.frontendStorage "Retrieves React assets" "HTTPS 443"
+        cms.cloudfront -> cms.alb "Forwards API and authentication requests" "HTTPS 443"
+
+        cms.waf -> cms.cloudfront "Protects"
+
+        cms.alb -> cms.backend "Routes requests to healthy tasks" "HTTPS 8443"
+
+        cms.backend -> cms.db "Reads and writes academic records" "TLS 5432"
+        cms.backend -> cms.redis "Sessions, caching and Pub/Sub" "TLS 6379"
+        cms.backend -> cms.reports "Stores generated PDF reports" "HTTPS 443"
+        cms.backend -> cms.secrets "Retrieves application secrets" "HTTPS 443"
+        cms.backend -> cms.logging "Sends application logs" "HTTPS 443"
+
+        cms.registry -> cms.backend "Supplies container images" "HTTPS 443"
+
+        cms.backend -> okta "OIDC authentication; outbound route TBD" "HTTPS 443"
+        student -> okta "Authenticates using MFA" "HTTPS 443"
+        faculty -> okta "Authenticates using MFA" "HTTPS 443"
+
+        cms.backend -> sis "Verifies eligibility and synchronises enrolments; route TBD" "HTTPS 443"
+        cms.reports -> analytics "Optional reporting export; route TBD" "HTTPS 443"
+
+        deploymentEnvironment "Production" {
+
+            deploymentNode "Student and Faculty Devices" "Web browsers" "Client" {
+                containerInstance cms.frontend
+            }
+
+            deploymentNode "External Identity and University Services" "Third-party systems" "External" {
+                softwareSystemInstance okta
+                softwareSystemInstance sis
+                softwareSystemInstance analytics
+            }
+
+            deploymentNode "AWS Region - Sydney" "ap-southeast-2" "AWS" {
+
+                deploymentNode "AWS Edge Services" "Public application delivery" "AWS Managed" {
+
+                    deploymentNode "CloudFront" "Single public entry point" "CloudFront" {
+                        containerInstance cms.cloudfront
+                    }
+
+                    deploymentNode "AWS WAF" "Web application protection" "WAF" {
+                        containerInstance cms.waf
+                    }
+                }
+
+                deploymentNode "Regional Storage and Services" "AWS managed services outside VPC" "AWS Managed" {
+
+                    deploymentNode "Frontend S3" "Private bucket with Origin Access Control" "S3" {
+                        containerInstance cms.frontendStorage
+                    }
+
+                    deploymentNode "Reports S3" "Private PDF and report storage" "S3" {
+                        containerInstance cms.reports
+                    }
+
+                    deploymentNode "Secrets Manager" "Protected application credentials" "Secrets Manager" {
+                        containerInstance cms.secrets
+                    }
+
+                    deploymentNode "CloudWatch" "Logging and monitoring" "CloudWatch" {
+                        containerInstance cms.logging
+                    }
+
+                    deploymentNode "Amazon ECR" "Backend container image registry" "ECR" {
+                        containerInstance cms.registry
+                    }
+                }
+
+                deploymentNode "CMS VPC" "10.0.0.0/16" "Amazon VPC" {
+                    tags "VPC"
+
+                    deploymentNode "Private Ingress Layer" "Internal load balancer spanning two Availability Zones" "Private Subnets" {
+                        tags "Private Subnet"
+
+                        deploymentNode "Internal ALB" "CMS-ALB-SG: inbound HTTPS 443 from CloudFront VPC origin" "Application Load Balancer" {
+                            containerInstance cms.alb
+                        }
+                    }
+
+                    deploymentNode "Availability Zone A" "First availability zone" "AWS AZ" {
+                        tags "AZ"
+
+                        deploymentNode "Public Subnet A" "10.0.0.0/24 - outbound connectivity reserved" "Subnet" {
+                            tags "Public Subnet"
+                        }
+
+                        deploymentNode "Private Application Subnet A" "10.0.20.0/24" "Subnet" {
+                            tags "Private Subnet"
+
+                            deploymentNode "ECS Fargate Task A" "CMS-Backend-SG: inbound 8443 from ALB SG" "AWS Fargate" {
+                                containerInstance cms.backend
+                            }
+                        }
+
+                        deploymentNode "Private Data Subnet A" "10.0.30.0/24" "Subnet" {
+                            tags "Private Subnet"
+
+                            deploymentNode "RDS Primary" "CMS-RDS-SG: inbound 5432 from backend SG" "RDS PostgreSQL" {
+                                containerInstance cms.db
+                            }
+
+                            deploymentNode "Redis Primary" "CMS-Redis-SG: inbound 6379 from backend SG" "ElastiCache Redis" {
+                                containerInstance cms.redis
+                            }
+                        }
+                    }
+
+                    deploymentNode "Availability Zone B" "Second availability zone" "AWS AZ" {
+                        tags "AZ"
+
+                        deploymentNode "Public Subnet B" "10.0.1.0/24 - outbound connectivity reserved" "Subnet" {
+                            tags "Public Subnet"
+                        }
+
+                        deploymentNode "Private Application Subnet B" "10.0.21.0/24" "Subnet" {
+                            tags "Private Subnet"
+
+                            deploymentNode "ECS Fargate Task B" "CMS-Backend-SG: inbound 8443 from ALB SG" "AWS Fargate" {
+                                containerInstance cms.backend
+                            }
+                        }
+
+                        deploymentNode "Private Data Subnet B" "10.0.31.0/24" "Subnet" {
+                            tags "Private Subnet"
+
+                            deploymentNode "RDS Standby" "Synchronous standby and automatic failover" "RDS PostgreSQL" {
+                                tags "Standby"
+                            }
+
+                            deploymentNode "Redis Replica" "Redis replication and automatic failover" "ElastiCache Redis" {
+                                tags "Standby"
+                            }
+                        }
+                    }
+
+                    deploymentNode "VPC Endpoints" "Private AWS service connectivity" "AWS PrivateLink / Gateway" {
+                        tags "Endpoints"
+                    }
+                }
+
+                deploymentNode "RDS Automated Backup Service" "Point-in-time recovery and backup retention" "AWS Managed" {
+                    tags "Backup"
+                }
+            }
+        }
+    }
+
+    views {
+
+        deployment cms "Production" "ProductionDeployment" "Level 4: AWS Production Deployment Architecture" {
+            include *
+            autoLayout lr
+        }
+
+        container cms "ContainerView" "Logical application containers and AWS services" {
+            include *
+            autoLayout lr
+        }
+
+        styles {
+
+            element "Element" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 3
+                shape roundedbox
+            }
+
+            element "Person" {
+                shape Person
+                background #ffffff
+                color #2a7e19
+                stroke #2a7e19
+                strokeWidth 4
+            }
+
+            element "Frontend" {
+                shape WebBrowser
+            }
+
+            element "Backend" {
+                shape roundedbox
+            }
+
+            element "Database" {
+                shape Cylinder
+            }
+
+            element "Cache" {
+                shape Pipe
+            }
+
+            element "Storage" {
+                shape Bucket
+            }
+
+            element "VPC" {
+                background #f3f8ff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            element "AZ" {
+                background #f7f7f7
+                color #555555
+                stroke #888888
+                strokeWidth 3
+            }
+
+            element "Private Subnet" {
+                background #edf8f0
+                color #267346
+                stroke #267346
+                strokeWidth 2
+            }
+
+            element "Public Subnet" {
+                background #fff5e6
+                color #a66313
+                stroke #a66313
+                strokeWidth 2
+            }
+
+            element "Standby" {
+                background #f2f2f2
+                color #777777
+                stroke #999999
+            }
+
+            element "External" {
+                background #ffffff
+                color #da1e28
+                stroke #da1e28
+            }
+
+            relationship "Relationship" {
+                thickness 2
+                color #444444
+            }
+        }
+    }
+
+    configuration {
+        scope softwaresystem
+    }
+}
