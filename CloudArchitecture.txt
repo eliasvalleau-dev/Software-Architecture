@@ -101,137 +101,112 @@ workspace "University Course Management System" "AWS Production Deployment Archi
         deploymentEnvironment "Production" {
 
             deploymentNode "Student and Faculty Devices" "Web browsers" "Client" {
-                containerInstance cms.frontend
+                frontendInstance = containerInstance cms.frontend
             }
 
             deploymentNode "External Identity and University Services" "Third-party university and SaaS systems" "External services" {
-                softwareSystemInstance okta
-                softwareSystemInstance sis
-                softwareSystemInstance analytics
+                oktaInstance = softwareSystemInstance okta
+                sisInstance = softwareSystemInstance sis
+                analyticsInstance = softwareSystemInstance analytics
             }
 
             deploymentNode "AWS Region - Sydney" "ap-southeast-2" "AWS" {
 
                 deploymentNode "AWS Edge Services" "Public application delivery" "AWS Managed" {
-
-                    deploymentNode "CloudFront" "Single public entry point" "CloudFront" {
-                        containerInstance cms.cloudfront
+                    deploymentNode "CloudFront" "Single public entry point for static content and APIs" "CloudFront" {
+                        cloudfrontInstance = containerInstance cms.cloudfront
                     }
 
-                    deploymentNode "AWS WAF" "Web application protection" "WAF" {
-                        containerInstance cms.waf
+                    deploymentNode "AWS WAF" "Web ACL associated with CloudFront" "WAF" {
+                        wafInstance = containerInstance cms.waf
                     }
                 }
 
-                deploymentNode "Regional Storage and Services" "AWS managed services outside VPC" "AWS Managed" {
-
+                deploymentNode "Regional Storage and Services" "AWS managed services outside the VPC" "AWS Managed" {
                     deploymentNode "Frontend S3" "Private bucket with Origin Access Control" "S3" {
-                        containerInstance cms.frontendStorage
+                        frontendStorageInstance = containerInstance cms.frontendStorage
                     }
 
                     deploymentNode "Reports S3" "Private PDF report storage; no direct public access" "S3" {
-                        containerInstance cms.reports
+                        reportsInstance = containerInstance cms.reports
                     }
 
                     deploymentNode "Secrets Manager" "Protected application credentials" "Secrets Manager" {
-                        containerInstance cms.secrets
+                        secretsInstance = containerInstance cms.secrets
                     }
 
                     deploymentNode "CloudWatch" "Logging and monitoring" "CloudWatch" {
-                        containerInstance cms.logging
+                        loggingInstance = containerInstance cms.logging
                     }
 
-                    deploymentNode "Amazon ECR" "Backend container image registry, read during deployment" "ECR" {
-                        containerInstance cms.registry
+                    deploymentNode "Amazon ECR" "Backend image registry, used during deployment" "ECR" {
+                        registryInstance = containerInstance cms.registry
                     }
+
+                    rdsBackupService = infrastructureNode "RDS automated backups" "Point-in-time recovery and agreed backup-retention policy for the operational database." "Amazon RDS"
                 }
 
                 deploymentNode "CMS VPC" "10.0.0.0/16" "Amazon VPC" {
                     tags "VPC"
 
+                    deploymentNode "Internet-facing ALB" "Spans public subnets A and B; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only." "AWS ALB" {
+                        albInstance = containerInstance cms.alb
+                    }
+
                     deploymentNode "Availability Zone A" "First availability zone" "AWS AZ" {
                         tags "AZ"
 
-                        deploymentNode "Public Subnet A" "10.0.0.0/24 - public ingress and zonal egress" "Subnet" {
+                        deploymentNode "Public Subnet A" "10.0.0.0/24 - zonal egress" "Subnet" {
                             tags "Public Subnet"
-
-                            deploymentNode "ALB Listener A" "Internet-facing ALB; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only" "Application Load Balancer" {
-                                containerInstance cms.alb
-                            }
-
-                            deploymentNode "NAT Gateway A" "Zonal egress for private application subnet A" "NAT Gateway"
+                            natGatewayA = infrastructureNode "NAT Gateway A" "Zonal HTTPS egress for private application subnet A." "AWS NAT Gateway"
                         }
 
                         deploymentNode "Private Application Subnet A" "10.0.20.0/24" "Subnet" {
                             tags "Private Subnet"
-
-                            deploymentNode "ECS Fargate Task A" "CMS-Backend-SG: inbound 8443 from ALB SG" "AWS Fargate" {
-                                containerInstance cms.backend
-                            }
+                            backendA = containerInstance cms.backend
                         }
 
                         deploymentNode "Private Data Subnet A" "10.0.30.0/24" "Subnet" {
                             tags "Private Subnet"
-
-                            deploymentNode "RDS Primary" "CMS-RDS-SG: inbound 5432 from backend SG" "RDS PostgreSQL" {
-                                containerInstance cms.db
-                            }
-
-                            deploymentNode "Redis Primary" "CMS-Redis-SG: inbound 6379 from backend SG" "ElastiCache Redis" {
-                                containerInstance cms.redis
-                            }
+                            rdsPrimary = containerInstance cms.db
+                            redisPrimary = containerInstance cms.redis
                         }
                     }
 
                     deploymentNode "Availability Zone B" "Second availability zone" "AWS AZ" {
                         tags "AZ"
 
-                        deploymentNode "Public Subnet B" "10.0.1.0/24 - public ingress and zonal egress" "Subnet" {
+                        deploymentNode "Public Subnet B" "10.0.1.0/24 - zonal egress" "Subnet" {
                             tags "Public Subnet"
-
-                            deploymentNode "ALB Listener B" "Second ALB availability-zone mapping; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only" "Application Load Balancer" {
-                                containerInstance cms.alb
-                            }
-
-                            deploymentNode "NAT Gateway B" "Zonal egress for private application subnet B" "NAT Gateway"
+                            natGatewayB = infrastructureNode "NAT Gateway B" "Zonal HTTPS egress for private application subnet B." "AWS NAT Gateway"
                         }
 
                         deploymentNode "Private Application Subnet B" "10.0.21.0/24" "Subnet" {
                             tags "Private Subnet"
-
-                            deploymentNode "ECS Fargate Task B" "CMS-Backend-SG: inbound 8443 from ALB SG" "AWS Fargate" {
-                                containerInstance cms.backend
-                            }
+                            backendB = containerInstance cms.backend
                         }
 
                         deploymentNode "Private Data Subnet B" "10.0.31.0/24" "Subnet" {
                             tags "Private Subnet"
-
-                            deploymentNode "RDS Standby" "Synchronous standby and automatic failover" "RDS PostgreSQL" {
+                            rdsStandby = infrastructureNode "RDS Multi-AZ standby" "Synchronous standby with automatic failover; no direct application traffic." "Amazon RDS PostgreSQL" {
                                 tags "Standby"
                             }
-
-                            deploymentNode "Redis Replica" "Redis replication and automatic failover" "ElastiCache Redis" {
+                            redisReplica = infrastructureNode "Redis replica" "Replication target with automatic failover; no direct application traffic." "Amazon ElastiCache Redis" {
                                 tags "Standby"
                             }
                         }
                     }
 
-                    deploymentNode "VPC Endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs" "AWS PrivateLink / Gateway" {
-                        tags "Endpoints"
-                    }
-                }
-
-                deploymentNode "RDS Automated Backup Service" "Point-in-time recovery and backup retention" "AWS Managed" {
-                    tags "Backup"
+                    vpcEndpoints = infrastructureNode "VPC endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs." "AWS PrivateLink / Gateway"
                 }
             }
+
         }
     }
 
     views {
 
-        deployment cms "Production" "ProductionDeployment" "Level 4: AWS Production Deployment Architecture" {
+        deployment cms "Production" "ProductionDeployment" "Production Deployment Diagram — AWS Sydney Region." {
             include *
             autoLayout lr
         }
