@@ -8,16 +8,16 @@ workspace "University Course Management System" "AWS Production Deployment Archi
         faculty = person "Faculty Member" "Manages subject offerings and academic reports."
         admin = person "System Administrator" "Monitors and maintains the platform."
 
-        okta = softwareSystem "Okta Identity Provider" "External university authentication and MFA service." {
-            tags "External"
+        okta = softwareSystem "Okta Identity & Access Management" "External university service that authenticates users, performs MFA, and supplies signed role or group claims." {
+            tags "External IAM"
         }
 
-        sis = softwareSystem "Student Information System" "External university system with unspecified hosting." {
-            tags "External"
+        sis = softwareSystem "Student Information System" "External university system holding master profiles, academic standing, subject catalogue, and official academic grades." {
+            tags "External SIS"
         }
 
-        analytics = softwareSystem "Enterprise Analytics System" "Optional external analytics integration." {
-            tags "External"
+        analytics = softwareSystem "Enterprise Data Analytics System" "External BI platform that receives approved de-identified aggregate analytics extracts." {
+            tags "External Reporting"
         }
 
         cms = softwareSystem "Course Management System" "University enrolment and academic records platform." {
@@ -38,11 +38,11 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                 tags "Storage"
             }
 
-            alb = container "Internal Application Load Balancer" "Distributes requests to healthy backend tasks." "AWS ALB" {
+            alb = container "Internet-facing Application Load Balancer" "Accepts HTTPS requests from CloudFront only and distributes them to healthy backend tasks in private subnets." "AWS ALB" {
                 tags "Load Balancer"
             }
 
-            backend = container "Spring Boot Backend" "Enrolment, subject offerings, analytics, reporting, SIS integration and BFF authentication." "Java / Spring Boot / ECS Fargate" {
+            backend = container "Spring Boot Backend" "Enrolment, subject offerings, analytics, reporting, SIS integration, and authenticated API operations." "Java / Spring Boot (deployed on ECS Fargate)" {
                 tags "Backend"
             }
 
@@ -50,11 +50,11 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                 tags "Database"
             }
 
-            redis = container "Session and Availability Cache" "Shared sessions, cached availability and Pub/Sub events." "Amazon ElastiCache Redis" {
+            redis = container "Availability Cache" "Caches non-authoritative subject-offering availability and short-lived rate-limit data; PostgreSQL remains the system of record." "Amazon ElastiCache Redis" {
                 tags "Cache"
             }
 
-            reports = container "Reports S3 Bucket" "Stores PDF reports and exported academic information." "Amazon S3" {
+            reports = container "Reports S3 Bucket" "Private storage for generated PDF reports; the application authorises access before retrieval." "Amazon S3" {
                 tags "Storage"
             }
 
@@ -75,28 +75,28 @@ workspace "University Course Management System" "AWS Production Deployment Archi
         faculty -> cms.frontend "Uses" "HTTPS"
         admin -> cms.frontend "Administers through" "HTTPS"
 
-        cms.frontend -> cms.cloudfront "Loads application and calls APIs" "HTTPS 443"
+        cms.frontend -> cms.cloudfront "Loads application assets and invokes API endpoints" "HTTPS 443"
         cms.cloudfront -> cms.frontendStorage "Retrieves React assets" "HTTPS 443"
-        cms.cloudfront -> cms.alb "Forwards API and authentication requests" "HTTPS 443"
+        cms.cloudfront -> cms.alb "Forwards API requests; ALB security group permits CloudFront-origin traffic only" "HTTPS 443"
 
-        cms.waf -> cms.cloudfront "Protects"
+        cms.waf -> cms.cloudfront "Web ACL associated with; inspects and blocks malicious requests"
 
         cms.alb -> cms.backend "Routes requests to healthy tasks" "HTTPS 8443"
 
         cms.backend -> cms.db "Reads and writes academic records" "TLS 5432"
-        cms.backend -> cms.redis "Sessions, caching and Pub/Sub" "TLS 6379"
+        cms.backend -> cms.redis "Caches availability and applies short-lived rate limits" "TLS 6379"
         cms.backend -> cms.reports "Stores generated PDF reports" "HTTPS 443"
         cms.backend -> cms.secrets "Retrieves application secrets" "HTTPS 443"
         cms.backend -> cms.logging "Sends application logs" "HTTPS 443"
 
-        cms.registry -> cms.backend "Supplies container images" "HTTPS 443"
+        cms.registry -> cms.backend "Supplies container image during deployment" "HTTPS 443"
 
-        cms.backend -> okta "OIDC authentication; outbound route TBD" "HTTPS 443"
+        cms.backend -> okta "Validates OIDC configuration and performs authorised back-channel operations via NAT gateways" "HTTPS 443"
         student -> okta "Authenticates using MFA" "HTTPS 443"
         faculty -> okta "Authenticates using MFA" "HTTPS 443"
 
-        cms.backend -> sis "Verifies eligibility and synchronises enrolments; route TBD" "HTTPS 443"
-        cms.reports -> analytics "Optional reporting export; route TBD" "HTTPS 443"
+        cms.backend -> sis "Verifies eligibility and synchronises enrolments via NAT gateways" "HTTPS 443"
+        cms.backend -> analytics "Sends approved de-identified aggregate analytics extracts" "HTTPS 443"
 
         deploymentEnvironment "Production" {
 
@@ -104,7 +104,7 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                 containerInstance cms.frontend
             }
 
-            deploymentNode "External Identity and University Services" "Third-party systems" "External" {
+            deploymentNode "External Identity and University Services" "Third-party university and SaaS systems" "External services" {
                 softwareSystemInstance okta
                 softwareSystemInstance sis
                 softwareSystemInstance analytics
@@ -129,7 +129,7 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                         containerInstance cms.frontendStorage
                     }
 
-                    deploymentNode "Reports S3" "Private PDF and report storage" "S3" {
+                    deploymentNode "Reports S3" "Private PDF report storage; no direct public access" "S3" {
                         containerInstance cms.reports
                     }
 
@@ -141,7 +141,7 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                         containerInstance cms.logging
                     }
 
-                    deploymentNode "Amazon ECR" "Backend container image registry" "ECR" {
+                    deploymentNode "Amazon ECR" "Backend container image registry, read during deployment" "ECR" {
                         containerInstance cms.registry
                     }
                 }
@@ -149,19 +149,17 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                 deploymentNode "CMS VPC" "10.0.0.0/16" "Amazon VPC" {
                     tags "VPC"
 
-                    deploymentNode "Private Ingress Layer" "Internal load balancer spanning two Availability Zones" "Private Subnets" {
-                        tags "Private Subnet"
-
-                        deploymentNode "Internal ALB" "CMS-ALB-SG: inbound HTTPS 443 from CloudFront VPC origin" "Application Load Balancer" {
-                            containerInstance cms.alb
-                        }
-                    }
-
                     deploymentNode "Availability Zone A" "First availability zone" "AWS AZ" {
                         tags "AZ"
 
-                        deploymentNode "Public Subnet A" "10.0.0.0/24 - outbound connectivity reserved" "Subnet" {
+                        deploymentNode "Public Subnet A" "10.0.0.0/24 - public ingress and zonal egress" "Subnet" {
                             tags "Public Subnet"
+
+                            deploymentNode "ALB Listener A" "Internet-facing ALB; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only" "Application Load Balancer" {
+                                containerInstance cms.alb
+                            }
+
+                            deploymentNode "NAT Gateway A" "Zonal egress for private application subnet A" "NAT Gateway"
                         }
 
                         deploymentNode "Private Application Subnet A" "10.0.20.0/24" "Subnet" {
@@ -188,8 +186,14 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                     deploymentNode "Availability Zone B" "Second availability zone" "AWS AZ" {
                         tags "AZ"
 
-                        deploymentNode "Public Subnet B" "10.0.1.0/24 - outbound connectivity reserved" "Subnet" {
+                        deploymentNode "Public Subnet B" "10.0.1.0/24 - public ingress and zonal egress" "Subnet" {
                             tags "Public Subnet"
+
+                            deploymentNode "ALB Listener B" "Second ALB availability-zone mapping; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only" "Application Load Balancer" {
+                                containerInstance cms.alb
+                            }
+
+                            deploymentNode "NAT Gateway B" "Zonal egress for private application subnet B" "NAT Gateway"
                         }
 
                         deploymentNode "Private Application Subnet B" "10.0.21.0/24" "Subnet" {
@@ -213,7 +217,7 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                         }
                     }
 
-                    deploymentNode "VPC Endpoints" "Private AWS service connectivity" "AWS PrivateLink / Gateway" {
+                    deploymentNode "VPC Endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs" "AWS PrivateLink / Gateway" {
                         tags "Endpoints"
                     }
                 }
@@ -309,10 +313,22 @@ workspace "University Course Management System" "AWS Production Deployment Archi
                 stroke #999999
             }
 
-            element "External" {
+            element "External IAM" {
                 background #ffffff
                 color #da1e28
                 stroke #da1e28
+            }
+
+            element "External SIS" {
+                background #ffffff
+                color #d97706
+                stroke #d97706
+            }
+
+            element "External Reporting" {
+                background #ffffff
+                color #8a3ffc
+                stroke #8a3ffc
             }
 
             relationship "Relationship" {
