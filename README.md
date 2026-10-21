@@ -3,13 +3,12 @@ Repository to handle Structurizr DSL diagrams
 
 ## Structurizr entry point
 
-Use `C4Diagram.txt` as the single Structurizr DSL entry point.
+Use `C4Diagram.txt` as the single Structurizr DSL entry point. It contains the
+system context, one logical container view, backend component, ETL component,
+dynamic enrolment flow, code, and production deployment views.
 
-During the staged consolidation of the former cloud/deployment workspace, its
-unmigrated source is retained as a commented migration section at the end of
-`C4Diagram.txt`. The section is removed as its corresponding live view is
-integrated. The comments are intentionally ignored by Structurizr.
-
-The current live views are the system context, logical container, backend
-component, ETL component, dynamic enrolment flow, code, and production
-deployment views.
+The container view is the canonical logical application model: the SPA,
+Backend API, ETL pipeline, availability cache and enrolment queue, operational
+database, report and data-export storage, and its external integrations. AWS
+delivery, operations, and infrastructure details are represented separately in
+the production deployment view.
