@@ -400,36 +400,50 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
     }
 
     views {
-        systemContext cms "SystemContext" "Level 1: System Context Diagram for Course Management System" {
+        systemContext cms "SystemContext" {
+            title "System Context Diagram for Course Management System"
+            description "C4 Level 1. Shows the Course Management System, its stakeholders, and external systems."
             include *
             autoLayout lr
         }
 
-        container cms "ContainerView" "Level 2: Canonical Logical Container Diagram for the Course Management System" {
+        container cms "ContainerView" {
+            title "Container Diagram for Course Management System"
+            description "C4 Level 2. Shows the canonical logical application containers and their interactions."
             include *
             autoLayout lr
         }
 
-        component cms.backend "ComponentView" "Level 3: Component Diagram for API Backend Service" {
+        component cms.backend "ComponentView" {
+            title "Component Diagram for Backend API"
+            description "C4 Level 3. Shows the major Backend API components and their interactions with supporting containers and external systems."
             include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.backend.userEntity cms.backend.studentEntity cms.backend.facultyEntity cms.backend.subjectEntity cms.backend.subjectOfferingEntity cms.backend.enrolmentEntity cms.backend.academicGradeEntity cms.cache cms.db cms.storage idp sis analytics
             autoLayout lr
         }
 
-        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+        component cms.etl "ETLComponentView" {
+            title "Component Diagram for Data Ingestion & ETL"
+            description "C4 Level 3. Shows the ETL pipeline components and their data flow."
             include *
         }
 
-        component cms.backend "CodeView" "Level 4 Code View: Backend Component Decomposition" {
+        component cms.backend "CodeView" {
+            title "Code Diagram for Backend API"
+            description "C4 Level 4. Shows the major code-level classes, entities, and dependencies of the Backend API."
             include cms.backend.enrolmentController cms.backend.enrolmentService cms.backend.seatAvailabilityManager cms.backend.enrolmentQueue cms.backend.subjectOfferingController cms.backend.subjectOfferingService cms.backend.analyticsController cms.backend.analyticsService cms.backend.reportingCodeComponent cms.backend.pdfGenerator cms.backend.sisAdapterCode cms.backend.sisClient cms.backend.sisMapper cms.backend.securityCodeComponent cms.backend.tokenValidator cms.backend.codeUserEntity cms.backend.codeStudentEntity cms.backend.codeFacultyEntity cms.backend.codeSubjectEntity cms.backend.codeSubjectOfferingEntity cms.backend.codeEnrolmentEntity cms.backend.codeAcademicGradeEntity
             autoLayout lr
         }
 
-        deployment cms "Production" "ProductionDeployment" "AWS Sydney production deployment for the Course Management System." {
+        deployment cms "Production" "ProductionDeployment" {
+            title "Deployment Diagram for Course Management System — Production"
+            description "Shows the production AWS deployment topology and infrastructure mappings."
             include *
             autoLayout lr
         }
 
-        dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
+        dynamic cms.backend "DynamicView" {
+            title "Dynamic Diagram for Student Enrolment Request"
+            description "Shows the ordered interactions for a student enrolment request."
         
             cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
             cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
