@@ -415,13 +415,18 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             autoLayout lr
         }
 
+        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+            include *
+        }
+
         component cms.backend "CodeView" "Level 4 Code View: Backend Component Decomposition" {
             include cms.backend.enrolmentController cms.backend.enrolmentService cms.backend.seatAvailabilityManager cms.backend.enrolmentQueue cms.backend.subjectOfferingController cms.backend.subjectOfferingService cms.backend.analyticsController cms.backend.analyticsService cms.backend.reportingCodeComponent cms.backend.pdfGenerator cms.backend.sisAdapterCode cms.backend.sisClient cms.backend.sisMapper cms.backend.securityCodeComponent cms.backend.tokenValidator cms.backend.codeUserEntity cms.backend.codeStudentEntity cms.backend.codeFacultyEntity cms.backend.codeSubjectEntity cms.backend.codeSubjectOfferingEntity cms.backend.codeEnrolmentEntity cms.backend.codeAcademicGradeEntity
             autoLayout lr
         }
 
-        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+        deployment cms "Production" "ProductionDeployment" "AWS Sydney production deployment for the Course Management System." {
             include *
+            autoLayout lr
         }
 
         dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
@@ -435,9 +440,8 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             autoLayout lr
         }
 
-        deployment cms "Production" "ProductionDeployment" "AWS Sydney production deployment for the Course Management System." {
-            include *
-            autoLayout lr
+        properties {
+            "structurizr.sort" "created"
         }
 
         styles {
