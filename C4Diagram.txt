@@ -24,11 +24,11 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             tags "Primary System"
 
             # Level 2 Containers
-            spa = container "Single-Page Application" "Provides subject-offering enrolment, availability tracking, and academic reporting interfaces through a web browser." "React / TypeScript" {
+            spa = container "Course Management SPA" "Provides subject-offering enrolment, availability tracking, and academic reporting interfaces through a web browser." "React / TypeScript" {
                 tags "UI Container"
             }
 
-            backend = container "Backend" "Processes enrolments and subject offerings, serves user-requested academic summaries, and generates PDF reports." "Java / Spring Boot" {
+            backend = container "Backend API" "Processes enrolments and subject offerings, serves user-requested academic summaries, generates PDF reports, and integrates with university systems." "Java / Spring Boot (ECS Fargate)" {
                 tags "Backend Container"
 
                 # Level 3 Application Components
@@ -84,6 +84,102 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 academicGradeEntity = component "Academic Grade" "Stores the final numerical and letter grade for an enrolment." "JPA Entity / Logical Data Model" {
                     tags "Component"
                 }
+
+                # Level 4 Code Elements
+                group "Enrolment API" {
+                    enrolmentController = component "EnrolmentController" "- enrolmentService: EnrolmentService\n+ submitEnrolment()\n+ cancelEnrolment()\n+ getEnrolmentStatus()" "Spring MVC Controller"
+
+                    enrolmentService = component "EnrolmentService" "- availabilityManager: SeatAvailabilityManager\n- sisAdapter: SISAdapter\n+ processEnrolment()\n+ cancelEnrolment()\n+ checkEligibility()" "Spring Service"
+
+                    seatAvailabilityManager = component "SeatAvailabilityManager" "- cacheClient: RedisClient\n+ getAvailableSeats()\n+ reserveSeat()\n+ releaseSeat()" "Spring Bean"
+
+                    enrolmentQueue = component "EnrolmentQueue" "- queueClient: RedisClient\n+ queueRequest()\n+ processNextRequest()" "Spring Bean"
+
+                    enrolmentController -> enrolmentService "Delegates enrolment requests to"
+                    enrolmentService -> seatAvailabilityManager "Checks and reserves availability"
+                    enrolmentService -> enrolmentQueue "Queues enrolment requests during peak demand"
+                }
+
+                group "Subject Offering API" {
+                    subjectOfferingController = component "SubjectOfferingController" "- subjectOfferingService: SubjectOfferingService\n+ getSubjects()\n+ getOfferings()\n+ createOffering()\n+ updateOffering()" "Spring MVC Controller"
+
+                    subjectOfferingService = component "SubjectOfferingService" "- cacheClient: RedisClient\n+ getSubjectOfferings()\n+ createOffering()\n+ updateOffering()\n+ checkPrerequisite()" "Spring Service"
+
+                    subjectOfferingController -> subjectOfferingService "Delegates subject-offering requests to"
+                }
+
+                group "Analytics API" {
+                    analyticsController = component "AnalyticsController" "- analyticsService: AnalyticsService\n+ requestPerformanceReport()\n+ getPerformanceMetrics()" "Spring MVC Controller"
+
+                    analyticsService = component "AnalyticsService" "- reportingComponent: ReportingComponent\n+ calculatePerformanceMetrics()\n+ generatePerformanceReport()" "Spring Service"
+
+                    analyticsController -> analyticsService "Delegates analytics requests to"
+                }
+
+                group "Reporting Component" {
+                    reportingCodeComponent = component "ReportingComponent" "- pdfGenerator: PdfGenerator\n+ compilePerformanceReport()\n+ generatePdf()" "Spring Bean"
+
+                    pdfGenerator = component "PdfGenerator" "+ createReport()\n+ exportPdf()" "Java PDF Library"
+
+                    reportingCodeComponent -> pdfGenerator "Generates PDF reports"
+                }
+
+                group "SIS Adapter" {
+                    sisAdapterCode = component "SISAdapter" "- sisClient: SISClient\n- sisMapper: SISMapper\n+ verifyEligibility()\n+ synchroniseStudent()\n+ synchroniseEnrolment()" "Spring Bean / Adapter"
+
+                    sisClient = component "SISClient" "- restClient: RestClient\n+ getStudentProfile()\n+ getAcademicRecord()\n+ updateEnrolment()" "REST Client"
+
+                    sisMapper = component "SISMapper" "+ mapStudentProfile()\n+ mapAcademicRecord()\n+ mapEnrolment()" "Mapper Utility"
+
+                    sisAdapterCode -> sisClient "Delegates SIS requests"
+                    sisAdapterCode -> sisMapper "Maps SIS data to internal models"
+                }
+
+                group "Security Component" {
+                    securityCodeComponent = component "SecurityComponent" "- tokenValidator: TokenValidator\n+ filterRequest()\n+ enforceAuthorisation()" "Spring Security Filter"
+
+                    tokenValidator = component "TokenValidator" "+ validateToken()\n+ extractClaims()\n+ validateRoles()" "OAuth2 / OIDC Validator"
+
+                    securityCodeComponent -> tokenValidator "Validates access tokens and claims"
+                    securityCodeComponent -> enrolmentController "Authorises requests"
+                    securityCodeComponent -> subjectOfferingController "Authorises requests"
+                    securityCodeComponent -> analyticsController "Authorises requests"
+                }
+
+                group "Domain Model" {
+                    codeUserEntity = component "User Entity" "- userId: UUID\n- oktaSubject: String\n- email: String\n- name: String" "JPA Entity"
+
+                    codeStudentEntity = component "Student Entity" "- studentId: UUID\n- degreeProgram: String\n- academicStanding: String" "JPA Entity"
+
+                    codeFacultyEntity = component "Faculty Entity" "- facultyId: UUID\n- facultyType: String" "JPA Entity"
+
+                    codeSubjectEntity = component "Subject Entity" "- subjectCode: String\n- name: String\n- creditPoints: Int\n- prerequisiteSubjectId: UUID?" "JPA Entity"
+
+                    codeSubjectOfferingEntity = component "Subject Offering Entity" "- offeringId: UUID\n- term: String\n- section: String\n- capacity: Int\n- coordinatorId: UUID\n- enrolmentStart: DateTime\n- enrolmentEnd: DateTime\n- availability: Int" "JPA Entity"
+
+                    codeEnrolmentEntity = component "Enrolment Entity" "- enrolmentId: UUID\n- studentId: UUID\n- offeringId: UUID\n- status: EnrolmentStatus\n- timestamp: DateTime\n- waitlistSequence: Int" "JPA Entity"
+
+                    codeAcademicGradeEntity = component "Academic Grade Entity" "- gradeId: UUID\n- enrolmentId: UUID\n- numericalGrade: Double\n- letterGrade: String" "JPA Entity"
+
+                    codeStudentEntity -> codeUserEntity "Uses User ID as PK/FK"
+                    codeFacultyEntity -> codeUserEntity "Uses User ID as PK/FK"
+                    codeSubjectOfferingEntity -> codeSubjectEntity "References"
+                    codeSubjectOfferingEntity -> codeFacultyEntity "References coordinator"
+                    codeEnrolmentEntity -> codeStudentEntity "References"
+                    codeEnrolmentEntity -> codeSubjectOfferingEntity "References"
+                    codeAcademicGradeEntity -> codeEnrolmentEntity "References"
+                    codeSubjectEntity -> codeSubjectEntity "May reference prerequisite subject"
+                }
+
+                enrolmentService -> codeEnrolmentEntity "Creates and updates"
+                enrolmentService -> codeStudentEntity "Checks student standing"
+                enrolmentService -> codeSubjectOfferingEntity "Checks capacity and availability"
+                enrolmentService -> codeSubjectEntity "Checks prerequisite"
+                subjectOfferingService -> codeSubjectEntity "Reads catalogue data"
+                subjectOfferingService -> codeSubjectOfferingEntity "Manages offerings"
+                analyticsService -> codeAcademicGradeEntity "Queries performance data"
+                enrolmentService -> sisAdapterCode "Verifies academic eligibility"
+                analyticsService -> reportingCodeComponent "Delegates report compilation"
             }
 
             # Separate scheduled analytics pipeline; not part of interactive enrolment or reporting.
@@ -103,7 +199,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 }
             }
 
-            cache = container "In-Memory Cache & Queue" "Caches active subject-offering availability and buffers incoming enrolment requests." "Redis" {
+            cache = container "Availability Cache & Enrolment Queue" "Caches non-authoritative subject-offering availability and buffers incoming enrolment requests; PostgreSQL remains the system of record." "Redis" {
                 tags "Cache Store"
             }
 
@@ -122,6 +218,8 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             backend -> storage "Saves and retrieves user-requested PDF reports" "AWS S3 API / HTTPS"
             etl -> db "Extracts approved academic records using read-only queries" "SQL / JDBC (read-only)"
             etl -> storage "Publishes transformed analytics datasets" "AWS S3 API / HTTPS"
+            backend -> idp "Validates signed access tokens and performs authorised identity operations" "OAuth2 / OIDC"
+            backend -> sis "Verifies eligibility and synchronises enrolments" "HTTPS / REST API"
 
             # Level 3 Component Relationships
             spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
@@ -174,7 +272,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             backend.sisAdapter -> sis "Calls REST endpoints on" "HTTPS / REST API"
 
             
-            cms.storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
+            storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
 
 
             #Dynamic Diagram Information
@@ -190,28 +288,162 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
+        student -> idp "Authenticates using MFA" "HTTPS"
+        faculty -> idp "Authenticates using MFA" "HTTPS"
+
+        # Production deployment model. AWS delivery and operations services are
+        # infrastructure nodes; the C4 containers above remain the logical model.
+        deploymentEnvironment "Production" {
+            clientDevices = deploymentNode "Student, Faculty and Administrator Devices" "Web browsers running the Course Management System SPA." "Client" {
+                spaInstance = containerInstance cms.spa
+            }
+
+            externalServices = deploymentNode "External Identity, Student Information and Analytics Services" "Third-party university and SaaS systems." "External Services" {
+                idpInstance = softwareSystemInstance idp
+                sisInstance = softwareSystemInstance sis
+                analyticsInstance = softwareSystemInstance analytics
+            }
+
+            awsRegion = deploymentNode "AWS Region - Sydney" "ap-southeast-2 production deployment." "AWS" {
+                edgeServices = deploymentNode "AWS Edge Services" "Public application delivery." "AWS Managed" {
+                    waf = infrastructureNode "AWS WAF" "Web ACL associated with CloudFront to inspect and block malicious HTTP traffic." "AWS WAF"
+                    cloudfront = infrastructureNode "CloudFront Distribution" "Public entry point for static assets and API requests." "Amazon CloudFront"
+                }
+
+                regionalServices = deploymentNode "Regional Storage and Operations Services" "Managed AWS services outside the CMS VPC." "AWS Managed" {
+                    frontendAssets = infrastructureNode "Frontend S3 Bucket" "Private bucket for compiled React assets, protected by Origin Access Control." "Amazon S3"
+                    reportStorage = deploymentNode "Report and Data Export S3" "Private storage for generated PDF reports and approved analytics extracts." "Amazon S3" {
+                        storageInstance = containerInstance cms.storage
+                    }
+                    secrets = infrastructureNode "AWS Secrets Manager" "Stores application credentials and Okta client secrets." "AWS Secrets Manager"
+                    logging = infrastructureNode "Amazon CloudWatch Logs" "Collects application logs and operational events." "Amazon CloudWatch"
+                    registry = infrastructureNode "Amazon ECR" "Stores backend container images for deployment." "Amazon ECR"
+                    backups = infrastructureNode "RDS Automated Backups" "Point-in-time recovery and agreed backup-retention policy for the operational database." "Amazon RDS"
+                }
+
+                cmsVpc = deploymentNode "CMS VPC" "10.0.0.0/16." "Amazon VPC" {
+                    tags "VPC"
+
+                    alb = infrastructureNode "Internet-facing Application Load Balancer" "Accepts HTTPS requests from CloudFront and distributes them to healthy backend tasks." "AWS ALB"
+
+                    availabilityZoneA = deploymentNode "Availability Zone A" "First availability zone." "AWS AZ" {
+                        tags "AZ"
+
+                        publicSubnetA = deploymentNode "Public Subnet A" "10.0.0.0/24 - zonal egress." "Subnet" {
+                            tags "Public Subnet"
+                            natGatewayA = infrastructureNode "NAT Gateway A" "Zonal HTTPS egress for private application subnet A." "AWS NAT Gateway"
+                        }
+
+                        privateApplicationSubnetA = deploymentNode "Private Application Subnet A" "10.0.20.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            backendTaskA = deploymentNode "Backend Fargate Task A" "Runs a healthy Backend API task." "AWS Fargate" {
+                                backendA = containerInstance cms.backend
+                            }
+                            scheduledEtlTask = deploymentNode "Scheduled ETL Fargate Task" "Runs the scheduled Spring Batch ingestion and analytics export job." "AWS Fargate" {
+                                etlTask = containerInstance cms.etl
+                            }
+                        }
+
+                        privateDataSubnetA = deploymentNode "Private Data Subnet A" "10.0.30.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            rdsPrimary = containerInstance cms.db
+                            redisPrimary = containerInstance cms.cache
+                        }
+                    }
+
+                    availabilityZoneB = deploymentNode "Availability Zone B" "Second availability zone." "AWS AZ" {
+                        tags "AZ"
+
+                        publicSubnetB = deploymentNode "Public Subnet B" "10.0.1.0/24 - zonal egress." "Subnet" {
+                            tags "Public Subnet"
+                            natGatewayB = infrastructureNode "NAT Gateway B" "Zonal HTTPS egress for private application subnet B." "AWS NAT Gateway"
+                        }
+
+                        privateApplicationSubnetB = deploymentNode "Private Application Subnet B" "10.0.21.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            backendTaskB = deploymentNode "Backend Fargate Task B" "Runs a healthy Backend API task." "AWS Fargate" {
+                                backendB = containerInstance cms.backend
+                            }
+                        }
+
+                        privateDataSubnetB = deploymentNode "Private Data Subnet B" "10.0.31.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            rdsStandby = infrastructureNode "RDS Multi-AZ Standby" "Synchronous standby with automatic failover; no direct application traffic." "Amazon RDS PostgreSQL" {
+                                tags "Standby"
+                            }
+                            redisReplica = infrastructureNode "Redis Replica" "Replication target with automatic failover; no direct application traffic." "Amazon ElastiCache Redis" {
+                                tags "Standby"
+                            }
+                        }
+                    }
+
+                    vpcEndpoints = infrastructureNode "VPC Endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs." "AWS PrivateLink / Gateway"
+                }
+            }
+
+            clientDevices.spaInstance -> awsRegion.edgeServices.cloudfront "Loads application assets and invokes API endpoints through" "HTTPS 443"
+            awsRegion.edgeServices.waf -> awsRegion.edgeServices.cloudfront "Protects"
+            awsRegion.edgeServices.cloudfront -> awsRegion.regionalServices.frontendAssets "Retrieves React assets from" "HTTPS 443"
+            awsRegion.edgeServices.cloudfront -> awsRegion.cmsVpc.alb "Forwards API requests to" "HTTPS 443"
+            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA "Routes requests to healthy tasks" "HTTPS 8443"
+            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB "Routes requests to healthy tasks" "HTTPS 8443"
+            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA "Supplies container image during deployment" "HTTPS 443"
+            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB "Supplies container image during deployment" "HTTPS 443"
+            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask "Supplies container image during deployment" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask -> awsRegion.regionalServices.logging "Sends batch job logs" "HTTPS 443"
+        }
     }
 
     views {
-        systemContext cms "SystemContext" "Level 1: System Context Diagram for Course Management System" {
+        systemContext cms "SystemContext" {
+            title "System Context Diagram for Course Management System"
+            description "C4 Level 1. Shows the Course Management System, its stakeholders, and external systems."
             include *
             autoLayout lr
         }
 
-        container cms "ContainerView" "Level 2: Container Diagram for Course Management System" {
+        container cms "ContainerView" {
+            title "Container Diagram for Course Management System"
+            description "C4 Level 2. Shows the canonical logical application containers and their interactions."
+            include *
+            autoLayout lr
+        }
+
+        component cms.backend "ComponentView" {
+            title "Component Diagram for Backend API"
+            description "C4 Level 3. Shows the major Backend API components and their interactions with supporting containers and external systems."
+            include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.backend.userEntity cms.backend.studentEntity cms.backend.facultyEntity cms.backend.subjectEntity cms.backend.subjectOfferingEntity cms.backend.enrolmentEntity cms.backend.academicGradeEntity cms.cache cms.db cms.storage idp sis analytics
+            autoLayout lr
+        }
+
+        component cms.etl "ETLComponentView" {
+            title "Component Diagram for Data Ingestion & ETL"
+            description "C4 Level 3. Shows the ETL pipeline components and their data flow."
             include *
         }
 
-        component cms.backend "ComponentView" "Level 3: Component Diagram for API Backend Service" {
-            include *
-            include analytics
+        component cms.backend "CodeView" {
+            title "Code Diagram for Backend API"
+            description "C4 Level 4. Shows the major code-level classes, entities, and dependencies of the Backend API."
+            include cms.backend.enrolmentController cms.backend.enrolmentService cms.backend.seatAvailabilityManager cms.backend.enrolmentQueue cms.backend.subjectOfferingController cms.backend.subjectOfferingService cms.backend.analyticsController cms.backend.analyticsService cms.backend.reportingCodeComponent cms.backend.pdfGenerator cms.backend.sisAdapterCode cms.backend.sisClient cms.backend.sisMapper cms.backend.securityCodeComponent cms.backend.tokenValidator cms.backend.codeUserEntity cms.backend.codeStudentEntity cms.backend.codeFacultyEntity cms.backend.codeSubjectEntity cms.backend.codeSubjectOfferingEntity cms.backend.codeEnrolmentEntity cms.backend.codeAcademicGradeEntity
+            autoLayout lr
         }
 
-        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+        deployment cms "Production" "ProductionDeployment" {
+            title "Deployment Diagram for Course Management System — Production"
+            description "Shows the production AWS deployment topology and infrastructure mappings."
             include *
+            autoLayout lr
         }
 
-        dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
+        dynamic cms.backend "DynamicView" {
+            title "Dynamic Diagram for Student Enrolment Request"
+            description "Shows the ordered interactions for a student enrolment request."
         
             cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
             cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
@@ -220,6 +452,10 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
             cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
             autoLayout lr
+        }
+
+        properties {
+            "structurizr.sort" "created"
         }
 
         styles {
@@ -320,6 +556,40 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 color "#8a3ffc"
                 stroke "#8a3ffc"
                 strokeWidth 4
+            }
+
+            element "VPC" {
+                background #f3f8ff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            element "AZ" {
+                background #f7f7f7
+                color #555555
+                stroke #888888
+                strokeWidth 3
+            }
+
+            element "Private Subnet" {
+                background #edf8f0
+                color #267346
+                stroke #267346
+                strokeWidth 2
+            }
+
+            element "Public Subnet" {
+                background #fff5e6
+                color #a66313
+                stroke #a66313
+                strokeWidth 2
+            }
+
+            element "Standby" {
+                background #f2f2f2
+                color #777777
+                stroke #999999
             }
 
             # Relationships
