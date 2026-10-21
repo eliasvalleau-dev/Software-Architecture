@@ -223,13 +223,14 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             backend -> sis "Verifies eligibility and synchronises enrolments" "HTTPS / REST API"
 
             # Level 3 Component Relationships
-            spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
+            submitEnrolmentRequest = spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
             spa -> backend.subjectOfferingApi "Queries subject details and offered sections via" "JSON / HTTPS"
             spa -> backend.analyticsApi "Requests academic performance reports via" "JSON / HTTPS"
 
-            backend.enrolmentApi -> backend.securityComponent "Delegates access-token validation to"
+            validateEnrolmentRequest = backend.enrolmentApi -> backend.securityComponent "Delegates access-token validation to"
             backend.subjectOfferingApi -> backend.securityComponent "Delegates access-token validation to"
             backend.analyticsApi -> backend.securityComponent "Delegates access-token validation to"
+            returnAuthorisationOutcome = backend.securityComponent -> backend.enrolmentApi "Returns the authorisation outcome to"
 
             # Enrolment and subject-offering behaviour
             backend.enrolmentApi -> backend.enrolmentEntity "Creates and updates"
@@ -269,29 +270,24 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 
             # Security and external integration
             backend.securityComponent -> cache "Validates cached session state in" "Redis Protocol"
-            backend.securityComponent -> idp "Uses Okta for user authentication and signed role or group claims via" "OAuth2 / OIDC"
+            validateSignedAccessToken = backend.securityComponent -> idp "Uses Okta for user authentication and signed role or group claims via" "OAuth2 / OIDC"
             backend.sisAdapter -> sis "Calls REST endpoints on" "HTTPS / REST API"
 
-            
             storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
 
-
-            #Dynamic Diagram Information
-            spa -> backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
-            backend.enrolmentApi -> spa "Validates access token and permissions " "JSON/HTTPS"
-            backend.enrolmentApi -> backend.securityComponent "Validates request using" 
-            backend.securityComponent -> backend.enrolmentApi "Issues an access token if request succeeds" 
-            backend.securityComponent -> db "select * from users where = ?" "SQL Query"
-            db -> backend.securityComponent "Returns user enrolment data to" "SQL Query"
         }
 
-        # External Relationships: Actors to Primary System Containers
+        # System-context actor relationships intentionally target the CMS as a
+        # whole, rather than a container, so the Level 1 view has complete edges.
+        student -> cms "Enrols in subjects and tracks academic standing using" "HTTPS"
+        faculty -> cms "Manages subject offerings and reviews academic analytics using" "HTTPS"
+        academicAdmin -> cms "Oversees subject offerings, enrolments, and academic records using" "HTTPS"
+        admin -> cms "Manages system configuration and operational health using" "HTTPS"
+        # Container-level actor relationships
         student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         academicAdmin -> cms.spa "Oversees subject offerings, enrolments, and academic records via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
-        student -> idp "Authenticates using MFA" "HTTPS"
-        faculty -> idp "Authenticates using MFA" "HTTPS"
 
         # Production deployment model. AWS delivery and operations services are
         # infrastructure nodes; the C4 containers above remain the logical model.
@@ -405,28 +401,59 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         systemContext cms "SystemContext" {
             title "System Context Diagram for Course Management System"
             description "C4 Level 1. Shows the Course Management System, its stakeholders, and external systems."
-            include *
+            include student
+            include faculty
+            include academicAdmin
+            include admin
+            include cms
+            include idp
+            include sis
+            include analytics
+            exclude "element.parent==cms -> *"
+            exclude "* -> element.parent==cms"
+            exclude "element.parent==cms.backend -> *"
+            exclude "* -> element.parent==cms.backend"
+            exclude "element.parent==cms.etl -> *"
+            exclude "* -> element.parent==cms.etl"
             autoLayout lr
         }
 
         container cms "ContainerView" {
             title "Container Diagram for Course Management System"
             description "C4 Level 2. Shows the canonical logical application containers and their interactions."
-            include *
+            include student
+            include faculty
+            include academicAdmin
+            include admin
+            include cms.spa
+            include cms.backend
+            include cms.etl
+            include cms.cache
+            include cms.db
+            include cms.storage
+            include idp
+            include sis
+            include analytics
+            exclude "element.parent==cms.backend -> *"
+            exclude "* -> element.parent==cms.backend"
+            exclude "element.parent==cms.etl -> *"
+            exclude "* -> element.parent==cms.etl"
             autoLayout lr
         }
 
         component cms.backend "ComponentView" {
             title "Component Diagram for Backend API"
             description "C4 Level 3. Shows the major Backend API components and their interactions with supporting containers and external systems."
-            include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.backend.userEntity cms.backend.studentEntity cms.backend.facultyEntity cms.backend.subjectEntity cms.backend.subjectOfferingEntity cms.backend.enrolmentEntity cms.backend.academicGradeEntity cms.cache cms.db cms.storage idp sis analytics
+            include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.backend.userEntity cms.backend.studentEntity cms.backend.facultyEntity cms.backend.subjectEntity cms.backend.subjectOfferingEntity cms.backend.enrolmentEntity cms.backend.academicGradeEntity cms.cache cms.db cms.storage idp sis
             autoLayout lr
         }
 
         component cms.etl "ETLComponentView" {
             title "Component Diagram for Data Ingestion & ETL"
             description "C4 Level 3. Shows the ETL pipeline components and their data flow."
-            include *
+            include cms.etl.extractor cms.etl.transformer cms.etl.exportHandler cms.db cms.storage
+            exclude "cms.etl -> *"
+            autoLayout lr
         }
 
         component cms.backend "CodeView" {
@@ -440,6 +467,10 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             title "Deployment Diagram for Course Management System — Production"
             description "Shows the production AWS deployment topology and infrastructure mappings."
             include *
+            exclude "element.parent==cms.backend -> *"
+            exclude "* -> element.parent==cms.backend"
+            exclude "element.parent==cms.etl -> *"
+            exclude "* -> element.parent==cms.etl"
             autoLayout lr
         }
 
@@ -447,12 +478,10 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             title "Dynamic Diagram for Student Enrolment Request"
             description "Shows the ordered interactions for a student enrolment request."
         
-            cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
-            cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
-            cms.backend.enrolmentApi -> cms.backend.securityComponent "Validates request using" 
-            cms.backend.securityComponent -> cms.backend.enrolmentApi "Issues an access token if request succeeds" 
-            cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
-            cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
+            submitEnrolmentRequest "Submits enrolment request to"
+            validateEnrolmentRequest "Validates request using"
+            validateSignedAccessToken "Validates signed access token and claims"
+            returnAuthorisationOutcome "Returns authorisation outcome"
             autoLayout lr
         }
 

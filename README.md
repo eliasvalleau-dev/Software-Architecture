@@ -15,3 +15,12 @@ the production deployment view.
 
 The stakeholder-facing views include Students, Faculty Members, Academic
 Administrators, and System Administrators.
+
+## Relationship scoping
+
+Each view explicitly includes only the elements at its C4 abstraction level.
+The Context view uses system-to-system and actor-to-system relationships; the
+Container view uses actor-to-SPA and container-to-container relationships; and
+the component, ETL, code, dynamic, and deployment views use their respective
+relationships. This prevents parent, child, and code-level relationships from
+being rendered as incomplete edges in higher-level diagrams.
