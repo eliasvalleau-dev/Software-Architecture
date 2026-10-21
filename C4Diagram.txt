@@ -190,6 +190,103 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
+
+        # Production deployment model. AWS delivery and operations services are
+        # infrastructure nodes; the C4 containers above remain the logical model.
+        deploymentEnvironment "Production" {
+            clientDevices = deploymentNode "Student, Faculty and Administrator Devices" "Web browsers running the Course Management System SPA." "Client" {
+                spaInstance = containerInstance cms.spa
+            }
+
+            externalServices = deploymentNode "External Identity, Student Information and Analytics Services" "Third-party university and SaaS systems." "External Services" {
+                idpInstance = softwareSystemInstance idp
+                sisInstance = softwareSystemInstance sis
+                analyticsInstance = softwareSystemInstance analytics
+            }
+
+            awsRegion = deploymentNode "AWS Region - Sydney" "ap-southeast-2 production deployment." "AWS" {
+                edgeServices = deploymentNode "AWS Edge Services" "Public application delivery." "AWS Managed" {
+                    waf = infrastructureNode "AWS WAF" "Web ACL associated with CloudFront to inspect and block malicious HTTP traffic." "AWS WAF"
+                    cloudfront = infrastructureNode "CloudFront Distribution" "Public entry point for static assets and API requests." "Amazon CloudFront"
+                }
+
+                regionalServices = deploymentNode "Regional Storage and Operations Services" "Managed AWS services outside the CMS VPC." "AWS Managed" {
+                    frontendAssets = infrastructureNode "Frontend S3 Bucket" "Private bucket for compiled React assets, protected by Origin Access Control." "Amazon S3"
+                    reportStorage = deploymentNode "Report and Data Export S3" "Private storage for generated PDF reports and approved analytics extracts." "Amazon S3" {
+                        storageInstance = containerInstance cms.storage
+                    }
+                    secrets = infrastructureNode "AWS Secrets Manager" "Stores application credentials and Okta client secrets." "AWS Secrets Manager"
+                    logging = infrastructureNode "Amazon CloudWatch Logs" "Collects application logs and operational events." "Amazon CloudWatch"
+                    registry = infrastructureNode "Amazon ECR" "Stores backend container images for deployment." "Amazon ECR"
+                    backups = infrastructureNode "RDS Automated Backups" "Point-in-time recovery and agreed backup-retention policy for the operational database." "Amazon RDS"
+                }
+
+                cmsVpc = deploymentNode "CMS VPC" "10.0.0.0/16." "Amazon VPC" {
+                    tags "VPC"
+
+                    alb = infrastructureNode "Internet-facing Application Load Balancer" "Accepts HTTPS requests from CloudFront and distributes them to healthy backend tasks." "AWS ALB"
+
+                    availabilityZoneA = deploymentNode "Availability Zone A" "First availability zone." "AWS AZ" {
+                        tags "AZ"
+
+                        publicSubnetA = deploymentNode "Public Subnet A" "10.0.0.0/24 - zonal egress." "Subnet" {
+                            tags "Public Subnet"
+                            natGatewayA = infrastructureNode "NAT Gateway A" "Zonal HTTPS egress for private application subnet A." "AWS NAT Gateway"
+                        }
+
+                        privateApplicationSubnetA = deploymentNode "Private Application Subnet A" "10.0.20.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            backendA = containerInstance cms.backend
+                        }
+
+                        privateDataSubnetA = deploymentNode "Private Data Subnet A" "10.0.30.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            rdsPrimary = containerInstance cms.db
+                            redisPrimary = containerInstance cms.cache
+                        }
+                    }
+
+                    availabilityZoneB = deploymentNode "Availability Zone B" "Second availability zone." "AWS AZ" {
+                        tags "AZ"
+
+                        publicSubnetB = deploymentNode "Public Subnet B" "10.0.1.0/24 - zonal egress." "Subnet" {
+                            tags "Public Subnet"
+                            natGatewayB = infrastructureNode "NAT Gateway B" "Zonal HTTPS egress for private application subnet B." "AWS NAT Gateway"
+                        }
+
+                        privateApplicationSubnetB = deploymentNode "Private Application Subnet B" "10.0.21.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            backendB = containerInstance cms.backend
+                        }
+
+                        privateDataSubnetB = deploymentNode "Private Data Subnet B" "10.0.31.0/24." "Subnet" {
+                            tags "Private Subnet"
+                            rdsStandby = infrastructureNode "RDS Multi-AZ Standby" "Synchronous standby with automatic failover; no direct application traffic." "Amazon RDS PostgreSQL" {
+                                tags "Standby"
+                            }
+                            redisReplica = infrastructureNode "Redis Replica" "Replication target with automatic failover; no direct application traffic." "Amazon ElastiCache Redis" {
+                                tags "Standby"
+                            }
+                        }
+                    }
+
+                    vpcEndpoints = infrastructureNode "VPC Endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs." "AWS PrivateLink / Gateway"
+                }
+            }
+
+            clientDevices.spaInstance -> awsRegion.edgeServices.cloudfront "Loads application assets and invokes API endpoints through" "HTTPS 443"
+            awsRegion.edgeServices.waf -> awsRegion.edgeServices.cloudfront "Protects"
+            awsRegion.edgeServices.cloudfront -> awsRegion.regionalServices.frontendAssets "Retrieves React assets from" "HTTPS 443"
+            awsRegion.edgeServices.cloudfront -> awsRegion.cmsVpc.alb "Forwards API requests to" "HTTPS 443"
+            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendA "Routes requests to healthy tasks" "HTTPS 8443"
+            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendB "Routes requests to healthy tasks" "HTTPS 8443"
+            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendA "Supplies container image during deployment" "HTTPS 443"
+            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendB "Supplies container image during deployment" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendA -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendB -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendA -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
+            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendB -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
+        }
     }
 
     views {
@@ -219,6 +316,11 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             cms.backend.securityComponent -> cms.backend.enrolmentApi "Issues an access token if request succeeds" 
             cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
             cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
+            autoLayout lr
+        }
+
+        deployment cms "Production" "ProductionDeployment" "AWS Sydney production deployment for the Course Management System." {
+            include *
             autoLayout lr
         }
 
@@ -322,6 +424,40 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 strokeWidth 4
             }
 
+            element "VPC" {
+                background #f3f8ff
+                color #0f62fe
+                stroke #0f62fe
+                strokeWidth 4
+            }
+
+            element "AZ" {
+                background #f7f7f7
+                color #555555
+                stroke #888888
+                strokeWidth 3
+            }
+
+            element "Private Subnet" {
+                background #edf8f0
+                color #267346
+                stroke #267346
+                strokeWidth 2
+            }
+
+            element "Public Subnet" {
+                background #fff5e6
+                color #a66313
+                stroke #a66313
+                strokeWidth 2
+            }
+
+            element "Standby" {
+                background #f2f2f2
+                color #777777
+                stroke #999999
+            }
+
             # Relationships
             relationship "Relationship" {
                 thickness 2
@@ -337,9 +473,10 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 
 
 # =============================================================================
-# TEMPORARY MIGRATION SOURCE: CloudArchitecture.txt
-# Copied verbatim in Commit 0 so the original source remains beside its future
-# canonical location. This section is not evaluated by Structurizr.
+# REMAINING MIGRATION SOURCE: CloudArchitecture.txt
+# Sections are removed from this source when their corresponding live view is
+# integrated into the canonical workspace. This section is not evaluated by
+# Structurizr.
 # =============================================================================
 # workspace "University Course Management System" "AWS Production Deployment Architecture" {
 #
@@ -441,118 +578,9 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 #         cms.backend -> sis "Verifies eligibility and synchronises enrolments via NAT gateways" "HTTPS 443"
 #         cms.backend -> analytics "Sends approved de-identified aggregate analytics extracts" "HTTPS 443"
 #
-#         deploymentEnvironment "Production" {
-#
-#             deploymentNode "Student and Faculty Devices" "Web browsers" "Client" {
-#                 frontendInstance = containerInstance cms.frontend
-#             }
-#
-#             deploymentNode "External Identity and University Services" "Third-party university and SaaS systems" "External services" {
-#                 oktaInstance = softwareSystemInstance okta
-#                 sisInstance = softwareSystemInstance sis
-#                 analyticsInstance = softwareSystemInstance analytics
-#             }
-#
-#             deploymentNode "AWS Region - Sydney" "ap-southeast-2" "AWS" {
-#
-#                 deploymentNode "AWS Edge Services" "Public application delivery" "AWS Managed" {
-#                     deploymentNode "CloudFront" "Single public entry point for static content and APIs" "CloudFront" {
-#                         cloudfrontInstance = containerInstance cms.cloudfront
-#                     }
-#
-#                     deploymentNode "AWS WAF" "Web ACL associated with CloudFront" "WAF" {
-#                         wafInstance = containerInstance cms.waf
-#                     }
-#                 }
-#
-#                 deploymentNode "Regional Storage and Services" "AWS managed services outside the VPC" "AWS Managed" {
-#                     deploymentNode "Frontend S3" "Private bucket with Origin Access Control" "S3" {
-#                         frontendStorageInstance = containerInstance cms.frontendStorage
-#                     }
-#
-#                     deploymentNode "Reports S3" "Private PDF report storage; no direct public access" "S3" {
-#                         reportsInstance = containerInstance cms.reports
-#                     }
-#
-#                     deploymentNode "Secrets Manager" "Protected application credentials" "Secrets Manager" {
-#                         secretsInstance = containerInstance cms.secrets
-#                     }
-#
-#                     deploymentNode "CloudWatch" "Logging and monitoring" "CloudWatch" {
-#                         loggingInstance = containerInstance cms.logging
-#                     }
-#
-#                     deploymentNode "Amazon ECR" "Backend image registry, used during deployment" "ECR" {
-#                         registryInstance = containerInstance cms.registry
-#                     }
-#
-#                     rdsBackupService = infrastructureNode "RDS automated backups" "Point-in-time recovery and agreed backup-retention policy for the operational database." "Amazon RDS"
-#                 }
-#
-#                 deploymentNode "CMS VPC" "10.0.0.0/16" "Amazon VPC" {
-#                     tags "VPC"
-#
-#                     deploymentNode "Internet-facing ALB" "Spans public subnets A and B; CMS-ALB-SG permits HTTPS from the CloudFront managed prefix list only." "AWS ALB" {
-#                         albInstance = containerInstance cms.alb
-#                     }
-#
-#                     deploymentNode "Availability Zone A" "First availability zone" "AWS AZ" {
-#                         tags "AZ"
-#
-#                         deploymentNode "Public Subnet A" "10.0.0.0/24 - zonal egress" "Subnet" {
-#                             tags "Public Subnet"
-#                             natGatewayA = infrastructureNode "NAT Gateway A" "Zonal HTTPS egress for private application subnet A." "AWS NAT Gateway"
-#                         }
-#
-#                         deploymentNode "Private Application Subnet A" "10.0.20.0/24" "Subnet" {
-#                             tags "Private Subnet"
-#                             backendA = containerInstance cms.backend
-#                         }
-#
-#                         deploymentNode "Private Data Subnet A" "10.0.30.0/24" "Subnet" {
-#                             tags "Private Subnet"
-#                             rdsPrimary = containerInstance cms.db
-#                             redisPrimary = containerInstance cms.redis
-#                         }
-#                     }
-#
-#                     deploymentNode "Availability Zone B" "Second availability zone" "AWS AZ" {
-#                         tags "AZ"
-#
-#                         deploymentNode "Public Subnet B" "10.0.1.0/24 - zonal egress" "Subnet" {
-#                             tags "Public Subnet"
-#                             natGatewayB = infrastructureNode "NAT Gateway B" "Zonal HTTPS egress for private application subnet B." "AWS NAT Gateway"
-#                         }
-#
-#                         deploymentNode "Private Application Subnet B" "10.0.21.0/24" "Subnet" {
-#                             tags "Private Subnet"
-#                             backendB = containerInstance cms.backend
-#                         }
-#
-#                         deploymentNode "Private Data Subnet B" "10.0.31.0/24" "Subnet" {
-#                             tags "Private Subnet"
-#                             rdsStandby = infrastructureNode "RDS Multi-AZ standby" "Synchronous standby with automatic failover; no direct application traffic." "Amazon RDS PostgreSQL" {
-#                                 tags "Standby"
-#                             }
-#                             redisReplica = infrastructureNode "Redis replica" "Replication target with automatic failover; no direct application traffic." "Amazon ElastiCache Redis" {
-#                                 tags "Standby"
-#                             }
-#                         }
-#                     }
-#
-#                     vpcEndpoints = infrastructureNode "VPC endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs." "AWS PrivateLink / Gateway"
-#                 }
-#             }
-#
-#         }
 #     }
 #
 #     views {
-#
-#         deployment cms "Production" "ProductionDeployment" "Production Deployment Diagram — AWS Sydney Region." {
-#             include *
-#             autoLayout lr
-#         }
 #
 #         container cms "ContainerView" "Logical application containers and AWS services" {
 #             include *
@@ -597,40 +625,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 #                 shape Bucket
 #             }
 #
-#             element "VPC" {
-#                 background #f3f8ff
-#                 color #0f62fe
-#                 stroke #0f62fe
-#                 strokeWidth 4
-#             }
-#
-#             element "AZ" {
-#                 background #f7f7f7
-#                 color #555555
-#                 stroke #888888
-#                 strokeWidth 3
-#             }
-#
-#             element "Private Subnet" {
-#                 background #edf8f0
-#                 color #267346
-#                 stroke #267346
-#                 strokeWidth 2
-#             }
-#
-#             element "Public Subnet" {
-#                 background #fff5e6
-#                 color #a66313
-#                 stroke #a66313
-#                 strokeWidth 2
-#             }
-#
-#             element "Standby" {
-#                 background #f2f2f2
-#                 color #777777
-#                 stroke #999999
-#             }
-#
 #             element "External IAM" {
 #                 background #ffffff
 #                 color #da1e28
@@ -661,7 +655,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 #     }
 # }
 # =============================================================================
-# END TEMPORARY MIGRATION SOURCE: CloudArchitecture.txt
+# END REMAINING MIGRATION SOURCE: CloudArchitecture.txt
 # =============================================================================
 
 # =============================================================================
