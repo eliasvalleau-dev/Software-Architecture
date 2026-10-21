@@ -6,6 +6,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         # Actors
         student = person "Student" "Enrolls in subjects and tracks academic standing."
         faculty = person "Faculty Member" "Manages subject offerings and reviews academic analytics."
+        academicAdmin = person "Academic Administrator" "Oversees subject offerings, enrolments, and academic records."
         admin = person "System Administrator" "Manages system access permissions and monitors operational health."
 
         # External Software Systems
@@ -287,6 +288,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         # External Relationships: Actors to Primary System Containers
         student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
+        academicAdmin -> cms.spa "Oversees subject offerings, enrolments, and academic records via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
         student -> idp "Authenticates using MFA" "HTTPS"
         faculty -> idp "Authenticates using MFA" "HTTPS"
@@ -294,7 +296,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         # Production deployment model. AWS delivery and operations services are
         # infrastructure nodes; the C4 containers above remain the logical model.
         deploymentEnvironment "Production" {
-            clientDevices = deploymentNode "Student, Faculty and Administrator Devices" "Web browsers running the Course Management System SPA." "Client" {
+            clientDevices = deploymentNode "University User Devices" "Web browsers used by students, faculty, academic administrators, and system administrators to access the Course Management System SPA." "Client" {
                 spaInstance = containerInstance cms.spa
             }
 

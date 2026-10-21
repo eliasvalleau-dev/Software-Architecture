@@ -12,3 +12,6 @@ Backend API, ETL pipeline, availability cache and enrolment queue, operational
 database, report and data-export storage, and its external integrations. AWS
 delivery, operations, and infrastructure details are represented separately in
 the production deployment view.
+
+The stakeholder-facing views include Students, Faculty Members, Academic
+Administrators, and System Administrators.
