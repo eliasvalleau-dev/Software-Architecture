@@ -288,113 +288,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         academicAdmin -> cms.spa "Oversees subject offerings, enrolments, and academic records via" "HTTPS"
         admin -> cms.spa "Manages system configurations via" "HTTPS"
-
-        # Production deployment model. AWS delivery and operations services are
-        # infrastructure nodes; the C4 containers above remain the logical model.
-        deploymentEnvironment "Production" {
-            clientDevices = deploymentNode "University User Devices" "Web browsers used by students, faculty, academic administrators, and system administrators to access the Course Management System SPA." "Client" {
-                spaInstance = containerInstance cms.spa
-            }
-
-            externalServices = deploymentNode "External Identity, Student Information and Analytics Services" "Third-party university and SaaS systems." "External Services" {
-                idpInstance = softwareSystemInstance idp
-                sisInstance = softwareSystemInstance sis
-                analyticsInstance = softwareSystemInstance analytics
-            }
-
-            awsRegion = deploymentNode "AWS Region - Sydney" "ap-southeast-2 production deployment." "AWS" {
-                edgeServices = deploymentNode "AWS Edge Services" "Public application delivery." "AWS Managed" {
-                    waf = infrastructureNode "AWS WAF" "Web ACL associated with CloudFront to inspect and block malicious HTTP traffic." "AWS WAF"
-                    cloudfront = infrastructureNode "CloudFront Distribution" "Public entry point for static assets and API requests." "Amazon CloudFront"
-                }
-
-                regionalServices = deploymentNode "Regional Storage and Operations Services" "Managed AWS services outside the CMS VPC." "AWS Managed" {
-                    frontendAssets = infrastructureNode "Frontend S3 Bucket" "Private bucket for compiled React assets, protected by Origin Access Control." "Amazon S3"
-                    reportStorage = deploymentNode "Report and Data Export S3" "Private storage for generated PDF reports and approved analytics extracts." "Amazon S3" {
-                        storageInstance = containerInstance cms.storage
-                    }
-                    secrets = infrastructureNode "AWS Secrets Manager" "Stores application credentials and Okta client secrets." "AWS Secrets Manager"
-                    logging = infrastructureNode "Amazon CloudWatch Logs" "Collects application logs and operational events." "Amazon CloudWatch"
-                    registry = infrastructureNode "Amazon ECR" "Stores backend container images for deployment." "Amazon ECR"
-                    backups = infrastructureNode "RDS Automated Backups" "Point-in-time recovery and agreed backup-retention policy for the operational database." "Amazon RDS"
-                }
-
-                cmsVpc = deploymentNode "CMS VPC" "10.0.0.0/16." "Amazon VPC" {
-                    tags "VPC"
-
-                    alb = infrastructureNode "Internet-facing Application Load Balancer" "Accepts HTTPS requests from CloudFront and distributes them to healthy backend tasks." "AWS ALB"
-
-                    availabilityZoneA = deploymentNode "Availability Zone A" "First availability zone." "AWS AZ" {
-                        tags "AZ"
-
-                        publicSubnetA = deploymentNode "Public Subnet A" "10.0.0.0/24 - zonal egress." "Subnet" {
-                            tags "Public Subnet"
-                            natGatewayA = infrastructureNode "NAT Gateway A" "Zonal HTTPS egress for private application subnet A." "AWS NAT Gateway"
-                        }
-
-                        privateApplicationSubnetA = deploymentNode "Private Application Subnet A" "10.0.20.0/24." "Subnet" {
-                            tags "Private Subnet"
-                            backendTaskA = deploymentNode "Backend Fargate Task A" "Runs a healthy Backend API task." "AWS Fargate" {
-                                backendA = containerInstance cms.backend
-                            }
-                            scheduledEtlTask = deploymentNode "Scheduled ETL Fargate Task" "Runs the scheduled Spring Batch ingestion and analytics export job." "AWS Fargate" {
-                                etlTask = containerInstance cms.etl
-                            }
-                        }
-
-                        privateDataSubnetA = deploymentNode "Private Data Subnet A" "10.0.30.0/24." "Subnet" {
-                            tags "Private Subnet"
-                            rdsPrimary = containerInstance cms.db
-                            redisPrimary = containerInstance cms.cache
-                        }
-                    }
-
-                    availabilityZoneB = deploymentNode "Availability Zone B" "Second availability zone." "AWS AZ" {
-                        tags "AZ"
-
-                        publicSubnetB = deploymentNode "Public Subnet B" "10.0.1.0/24 - zonal egress." "Subnet" {
-                            tags "Public Subnet"
-                            natGatewayB = infrastructureNode "NAT Gateway B" "Zonal HTTPS egress for private application subnet B." "AWS NAT Gateway"
-                        }
-
-                        privateApplicationSubnetB = deploymentNode "Private Application Subnet B" "10.0.21.0/24." "Subnet" {
-                            tags "Private Subnet"
-                            backendTaskB = deploymentNode "Backend Fargate Task B" "Runs a healthy Backend API task." "AWS Fargate" {
-                                backendB = containerInstance cms.backend
-                            }
-                        }
-
-                        privateDataSubnetB = deploymentNode "Private Data Subnet B" "10.0.31.0/24." "Subnet" {
-                            tags "Private Subnet"
-                            rdsStandby = infrastructureNode "RDS Multi-AZ Standby" "Synchronous standby with automatic failover; no direct application traffic." "Amazon RDS PostgreSQL" {
-                                tags "Standby"
-                            }
-                            redisReplica = infrastructureNode "Redis Replica" "Replication target with automatic failover; no direct application traffic." "Amazon ElastiCache Redis" {
-                                tags "Standby"
-                            }
-                        }
-                    }
-
-                    vpcEndpoints = infrastructureNode "VPC Endpoints" "Gateway endpoint for S3 and interface endpoints for ECR, Secrets Manager, and CloudWatch Logs." "AWS PrivateLink / Gateway"
-                }
-            }
-
-            clientDevices.spaInstance -> awsRegion.edgeServices.cloudfront "Loads application assets and invokes API endpoints through" "HTTPS 443"
-            awsRegion.edgeServices.waf -> awsRegion.edgeServices.cloudfront "Protects"
-            awsRegion.edgeServices.cloudfront -> awsRegion.regionalServices.frontendAssets "Retrieves React assets from" "HTTPS 443"
-            awsRegion.edgeServices.cloudfront -> awsRegion.cmsVpc.alb "Forwards API requests to" "HTTPS 443"
-            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA "Routes requests to healthy tasks" "HTTPS 8443"
-            awsRegion.cmsVpc.alb -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB "Routes requests to healthy tasks" "HTTPS 8443"
-            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA "Supplies container image during deployment" "HTTPS 443"
-            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB "Supplies container image during deployment" "HTTPS 443"
-            awsRegion.regionalServices.registry -> awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask "Supplies container image during deployment" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask -> awsRegion.regionalServices.secrets "Retrieves application secrets" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.backendTaskA.backendA -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneB.privateApplicationSubnetB.backendTaskB.backendB -> awsRegion.regionalServices.logging "Sends application logs" "HTTPS 443"
-            awsRegion.cmsVpc.availabilityZoneA.privateApplicationSubnetA.scheduledEtlTask.etlTask -> awsRegion.regionalServices.logging "Sends batch job logs" "HTTPS 443"
-        }
     }
 
     views {
@@ -444,7 +337,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         component cms.backend "ComponentView" {
             title "Component Diagram for Backend API"
             description "C4 Level 3. Shows the major Backend API components and their interactions with supporting containers and external systems."
-            include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.backend.userEntity cms.backend.studentEntity cms.backend.facultyEntity cms.backend.subjectEntity cms.backend.subjectOfferingEntity cms.backend.enrolmentEntity cms.backend.academicGradeEntity cms.cache cms.db cms.storage idp sis
+            include cms.spa cms.backend.enrolmentApi cms.backend.subjectOfferingApi cms.backend.analyticsApi cms.backend.securityComponent cms.backend.reportingComponent cms.backend.sisAdapter cms.cache cms.db cms.storage idp sis
             autoLayout lr
         }
 
@@ -460,17 +353,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             title "Code Diagram for Backend API"
             description "C4 Level 4. Shows the major code-level classes, entities, and dependencies of the Backend API."
             include cms.backend.enrolmentController cms.backend.enrolmentService cms.backend.seatAvailabilityManager cms.backend.enrolmentQueue cms.backend.subjectOfferingController cms.backend.subjectOfferingService cms.backend.analyticsController cms.backend.analyticsService cms.backend.reportingCodeComponent cms.backend.pdfGenerator cms.backend.sisAdapterCode cms.backend.sisClient cms.backend.sisMapper cms.backend.securityCodeComponent cms.backend.tokenValidator cms.backend.codeUserEntity cms.backend.codeStudentEntity cms.backend.codeFacultyEntity cms.backend.codeSubjectEntity cms.backend.codeSubjectOfferingEntity cms.backend.codeEnrolmentEntity cms.backend.codeAcademicGradeEntity
-            autoLayout lr
-        }
-
-        deployment cms "Production" "ProductionDeployment" {
-            title "Deployment Diagram for Course Management System — Production"
-            description "Shows the production AWS deployment topology and infrastructure mappings."
-            include *
-            exclude "element.parent==cms.backend -> *"
-            exclude "* -> element.parent==cms.backend"
-            exclude "element.parent==cms.etl -> *"
-            exclude "* -> element.parent==cms.etl"
             autoLayout lr
         }
 
@@ -587,40 +469,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 color "#8a3ffc"
                 stroke "#8a3ffc"
                 strokeWidth 4
-            }
-
-            element "VPC" {
-                background #f3f8ff
-                color #0f62fe
-                stroke #0f62fe
-                strokeWidth 4
-            }
-
-            element "AZ" {
-                background #f7f7f7
-                color #555555
-                stroke #888888
-                strokeWidth 3
-            }
-
-            element "Private Subnet" {
-                background #edf8f0
-                color #267346
-                stroke #267346
-                strokeWidth 2
-            }
-
-            element "Public Subnet" {
-                background #fff5e6
-                color #a66313
-                stroke #a66313
-                strokeWidth 2
-            }
-
-            element "Standby" {
-                background #f2f2f2
-                color #777777
-                stroke #999999
             }
 
             # Relationships

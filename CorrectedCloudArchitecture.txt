@@ -1,0 +1,251 @@
+workspace "Course Management System - Focused AWS Deployment" "Compact production overview with an Availability Zone B drill-down." {
+
+    model {
+        cms = softwareSystem "Course Management System" "University enrolment and academic records." {
+            spa = container "Course Management SPA" "Browser-based university portal." "React / TypeScript"
+            backend = container "Backend API" "Handles enrolment, subject offerings, academic records and interactive reports." "Java / Spring Boot"
+            db = container "Operational Database" "Authoritative academic and enrolment records." "Amazon RDS PostgreSQL Multi-AZ"
+            cache = container "Availability Cache" "Non-authoritative availability cache and temporary request state." "Amazon ElastiCache Redis"
+            storage = container "Reports & Analytics Exports" "Private PDFs and approved BI datasets." "Amazon S3"
+
+            # Logical data flows: kept out of the deployment diagrams for clarity.
+            backend -> db "Reads and writes operational records" "SQL / JDBC" {
+                tags "InternalDataFlow"
+            }
+            backend -> cache "Reads cached availability" "Redis" {
+                tags "InternalDataFlow"
+            }
+            backend -> storage "Stores generated reports" "S3 API" {
+                tags "InternalDataFlow"
+            }
+        }
+
+        deploymentEnvironment "Production" {
+            users = deploymentNode "University Users" "Students, faculty and administrators using a web browser." "Client" {
+                tags "Overview"
+                browser = containerInstance spa {
+                    tags "Overview"
+                }
+            }
+
+            edge = deploymentNode "Global Edge" "Global application delivery; not located inside a Sydney AZ." "AWS Global" {
+                tags "Overview"
+                route53 = infrastructureNode "Route 53" "DNS service for the CMS domain; directs users to the CloudFront distribution." "Amazon Route 53" {
+                    tags "Overview"
+                }
+                acm = infrastructureNode "AWS Certificate Manager" "Manages TLS certificates for HTTPS: CloudFront certificates reside in us-east-1, while ALB certificates reside in the Sydney region." "AWS Certificate Manager" {
+                    tags "Overview"
+                }
+                cloudfront = infrastructureNode "CloudFront + WAF" "Serves the SPA and forwards API requests after web filtering." "CloudFront / AWS WAF" {
+                    tags "Overview"
+                }
+            }
+
+            region = deploymentNode "AWS Sydney Region" "ap-southeast-2." "AWS Region" {
+                tags "Overview"
+
+                regionalServices = deploymentNode "Regional AWS Services" "Shared services available to workloads in both AZs." "AWS Managed" {
+                    tags "Overview"
+                    frontendS3 = infrastructureNode "Frontend S3" "Private React assets served through CloudFront Origin Access Control." "Amazon S3" {
+                        tags "Overview"
+                    }
+                    reportStore = containerInstance storage {
+                        tags "Overview"
+                    }
+                    secrets = infrastructureNode "Secrets Manager" "Restricted application credentials and Okta client secrets." "AWS Secrets Manager" {
+                        tags "Overview"
+                    }
+                    cloudwatch = infrastructureNode "CloudWatch" "Logs, metrics and alarms for application and infrastructure." "Amazon CloudWatch" {
+                        tags "Overview"
+                    }
+                    ecr = infrastructureNode "Container Registry" "Stores deployable Spring Boot container images." "Amazon ECR" {
+                        tags "Overview"
+                    }
+                    backups = infrastructureNode "RDS Automated Backups" "Configured retention and point-in-time recovery." "Amazon RDS" {
+                        tags "Overview"
+                    }
+                }
+
+                vpc = deploymentNode "CMS VPC" "Two Availability Zones, each with one public and one private subnet." "Amazon VPC" {
+                    tags "Overview"
+
+                    igw = infrastructureNode "Internet Gateway" "VPC-level internet access for the public ALB and public-subnet NAT Gateways; public subnet route tables direct internet-bound traffic here." "AWS Internet Gateway" {
+                        tags "Overview"
+                    }
+
+                    alb = infrastructureNode "Application Load Balancer" "One internet-facing ALB attached to public subnets in BOTH AZs. Sends requests to healthy backend tasks across either AZ." "AWS ALB" {
+                        tags "Overview,AZBDetail"
+                    }
+
+                    # Overview-only navigation proxy: an infrastructure node is used
+                    # deliberately so AZ B appears as one descriptive clickable box.
+                    # The actual AZ B deployment node remains in the detailed view.
+                    azBSummary = infrastructureNode "Availability Zone B" "Independent public/private subnets and NAT Gateway; active backend capacity during peak enrolment plus RDS standby and Redis replica for automatic failover. Off-peak, data redundancy stays active even if only one backend task runs. Double-click for AZ B infrastructure." "Multi-AZ recovery zone (overview)" {
+                        tags "Overview,AZSummary"
+                        url "{workspace}/diagrams#AvailabilityZoneBDetail"
+                    }
+
+                    azA = deploymentNode "Availability Zone A" "Public/private subnets, backend ECS capacity and illustrative RDS/Redis primary roles; roles may change after failover." "AWS AZ" {
+                        tags "Overview,AZ"
+                        publicA = deploymentNode "Public Subnet A" "ALB network attachment and NAT Gateway A." "Subnet" {
+                            tags "Overview,Public"
+                            natA = infrastructureNode "NAT Gateway A" "Outbound internet access for private workloads in AZ A." "AWS NAT Gateway" {
+                                tags "Overview"
+                            }
+                        }
+                        privateA = deploymentNode "Private Subnet A" "ECS and data resources; restrictive security groups isolate the database and cache." "Subnet" {
+                            tags "Overview,Private"
+                            taskA = deploymentNode "Backend Fargate Task A" "Representative backend task; service capacity scales with demand." "AWS ECS Fargate" {
+                                tags "Overview"
+                                backendA = containerInstance backend {
+                                    tags "Overview"
+                                }
+                            }
+                            dbA = containerInstance db {
+                                tags "Overview"
+                            }
+                            cacheA = containerInstance cache {
+                                tags "Overview"
+                            }
+                        }
+                    }
+
+                    azB = deploymentNode "AZ B - Detailed Infrastructure" "Independent public/private subnets and NAT; active backend capacity during peak registration, plus RDS standby and Redis replica for automatic failover. Off-peak, backend tasks may be scaled down while data redundancy remains. Double-click for the AZ B detail." "AWS AZ" {
+                        tags "AZBDetail,AZBInternal,AZ"
+
+                        publicB = deploymentNode "Public Subnet B" "Second ALB network attachment and NAT Gateway B." "Subnet" {
+                            tags "AZBDetail,AZBInternal,Public"
+                            natB = infrastructureNode "NAT Gateway B" "Independent outbound internet access for private workloads in AZ B." "AWS NAT Gateway" {
+                                tags "AZBDetail,AZBInternal"
+                            }
+                        }
+                        privateB = deploymentNode "Private Subnet B" "ECS and standby data resources; security groups restrict access." "Subnet" {
+                            tags "AZBDetail,AZBInternal,Private"
+                            taskB = deploymentNode "Backend Fargate Task B" "Runs at peak or when scheduled for recovery; not necessarily active off-peak." "AWS ECS Fargate" {
+                                tags "AZBDetail,AZBInternal"
+                                backendB = containerInstance backend {
+                                    tags "AZBDetail,AZBInternal"
+                                }
+                            }
+                            dbStandby = infrastructureNode "RDS Multi-AZ Standby" "Synchronous standby with automated failover; no direct application reads." "Amazon RDS PostgreSQL" {
+                                tags "AZBDetail,AZBInternal,Standby"
+                            }
+                            redisReplica = infrastructureNode "Redis Replica" "Replicates Redis primary state and can be promoted after failure." "Amazon ElastiCache" {
+                                tags "AZBDetail,AZBInternal,Standby"
+                            }
+                        }
+                    }
+
+                    endpoints = infrastructureNode "VPC Endpoints" "Private access to S3 and selected AWS APIs." "AWS PrivateLink / Gateway" {
+                        tags "Overview"
+                    }
+                }
+            }
+
+            # Only essential request routing is drawn. Shared AWS service access is described in nodes.
+            # DNS and certificate configuration: overview only, not AZ B detail.
+            browser -> route53 "Resolves CMS domain" "DNS" {
+                tags "OverviewFlow"
+            }
+            route53 -> cloudfront "DNS alias targets CloudFront distribution" "Route 53 alias" {
+                tags "OverviewFlow"
+            }
+            acm -> cloudfront "Provisions edge TLS certificate (us-east-1)" "TLS certificate" {
+                tags "OverviewFlow"
+            }
+            acm -> alb "Provisions origin TLS certificate (Sydney)" "TLS certificate" {
+                tags "OverviewFlow"
+            }
+
+            browser -> cloudfront "Loads portal and calls API" "HTTPS"
+            cloudfront -> frontendS3 "Fetches SPA assets" "HTTPS"
+            # Internet ingress is modelled as transit through the VPC Internet Gateway.
+            cloudfront -> igw "Reaches the public API origin" "HTTPS" {
+                tags "OverviewFlow"
+            }
+            igw -> alb "Delivers API traffic to the public ALB" "HTTPS" {
+                tags "OverviewFlow"
+            }
+            # Private subnet outbound path: NAT gateways use the shared VPC Internet Gateway.
+            natA -> igw "Outbound internet traffic from AZ A" "NAT / routing" {
+                tags "OverviewFlow"
+            }
+            natB -> igw "Outbound internet traffic from AZ B" "NAT / routing" {
+                tags "OverviewFlow"
+            }
+            alb -> backendA "Routes to healthy AZ A task" "HTTPS"
+            # Overview-level connection to the AZ B summary, not a physical endpoint.
+            alb -> azBSummary "Routes to AZ B backend capacity (see detail)" "HTTPS"
+            alb -> backendB "Routes to healthy AZ B task (when active)" "HTTPS"
+
+            # Overview-only operational links. These are not included in the AZ B detail view.
+            backendA -> secrets "Retrieves application secrets" "AWS API / HTTPS" {
+                tags "OverviewFlow"
+            }
+            backendA -> cloudwatch "Sends application logs and metrics" "AWS API / HTTPS" {
+                tags "OverviewFlow"
+            }
+        }
+    }
+
+    views {
+        deployment * "Production" "ProductionOverview" {
+            title "CMS Production Deployment - Overview"
+            description "AZ A expanded and AZ B represented by a single clickable summary. One ALB spans public subnets in both AZs; regional AWS services are shared."
+            include "element.tag==Overview"
+            # Explicitly hide every AZ B child and its detailed deployment node.
+            # Otherwise Structurizr can include backendB via the ALB relationship.
+            exclude "element.tag==AZBInternal"
+            # Show the three logical backend data flows (RDS, Redis, S3) in this view only.
+            # Keep them excluded from the AZ B detail view.
+        }
+
+        deployment * "Production" "AvailabilityZoneBDetail" {
+            title "Availability Zone B - Infrastructure and Recovery"
+            description "AZ B public/private subnets, NAT, ECS backend task, RDS standby and Redis replica with the shared ALB. AZ A and regional services are omitted."
+            include "element.tag==AZBDetail"
+            exclude "relationship.tag==InternalDataFlow"
+            exclude "relationship.tag==OverviewFlow"
+            autoLayout tb
+        }
+
+        styles {
+            element "Element" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                shape roundedbox
+            }
+            element "AZSummary" {
+                background #ffffff
+                color #0f62fe
+                stroke #0f62fe
+                shape roundedbox
+            }
+            element "AZ" {
+                background #f5f5f5
+                color #444444
+                stroke #888888
+            }
+            element "Private" {
+                background #edf8f0
+                color #267346
+                stroke #267346
+            }
+            element "Public" {
+                background #fff5e6
+                color #a66313
+                stroke #a66313
+            }
+            element "Standby" {
+                background #f1f1f1
+                color #666666
+                stroke #999999
+            }
+            relationship "Relationship" {
+                color #555555
+                thickness 2
+            }
+        }
+    }
+}
