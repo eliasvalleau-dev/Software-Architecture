@@ -86,101 +86,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                     tags "Component"
                 }
 
-                # Level 4 Code Elements
-                group "Enrolment API" {
-                    enrolmentController = component "EnrolmentController" "- enrolmentService: EnrolmentService\n+ submitEnrolment()\n+ cancelEnrolment()\n+ getEnrolmentStatus()" "Spring MVC Controller"
-
-                    enrolmentService = component "EnrolmentService" "- availabilityManager: SeatAvailabilityManager\n- sisAdapter: SISAdapter\n+ processEnrolment()\n+ cancelEnrolment()\n+ checkEligibility()" "Spring Service"
-
-                    seatAvailabilityManager = component "SeatAvailabilityManager" "- cacheClient: RedisClient\n+ getAvailableSeats()\n+ reserveSeat()\n+ releaseSeat()" "Spring Bean"
-
-                    enrolmentQueue = component "EnrolmentQueue" "- queueClient: RedisClient\n+ queueRequest()\n+ processNextRequest()" "Spring Bean"
-
-                    enrolmentController -> enrolmentService "Delegates enrolment requests to"
-                    enrolmentService -> seatAvailabilityManager "Checks and reserves availability"
-                    enrolmentService -> enrolmentQueue "Queues enrolment requests during peak demand"
-                }
-
-                group "Subject Offering API" {
-                    subjectOfferingController = component "SubjectOfferingController" "- subjectOfferingService: SubjectOfferingService\n+ getSubjects()\n+ getOfferings()\n+ createOffering()\n+ updateOffering()" "Spring MVC Controller"
-
-                    subjectOfferingService = component "SubjectOfferingService" "- cacheClient: RedisClient\n+ getSubjectOfferings()\n+ createOffering()\n+ updateOffering()\n+ checkPrerequisite()" "Spring Service"
-
-                    subjectOfferingController -> subjectOfferingService "Delegates subject-offering requests to"
-                }
-
-                group "Analytics API" {
-                    analyticsController = component "AnalyticsController" "- analyticsService: AnalyticsService\n+ requestPerformanceReport()\n+ getPerformanceMetrics()" "Spring MVC Controller"
-
-                    analyticsService = component "AnalyticsService" "- reportingComponent: ReportingComponent\n+ calculatePerformanceMetrics()\n+ generatePerformanceReport()" "Spring Service"
-
-                    analyticsController -> analyticsService "Delegates analytics requests to"
-                }
-
-                group "Reporting Component" {
-                    reportingCodeComponent = component "ReportingComponent" "- pdfGenerator: PdfGenerator\n+ compilePerformanceReport()\n+ generatePdf()" "Spring Bean"
-
-                    pdfGenerator = component "PdfGenerator" "+ createReport()\n+ exportPdf()" "Java PDF Library"
-
-                    reportingCodeComponent -> pdfGenerator "Generates PDF reports"
-                }
-
-                group "SIS Adapter" {
-                    sisAdapterCode = component "SISAdapter" "- sisClient: SISClient\n- sisMapper: SISMapper\n+ verifyEligibility()\n+ synchroniseStudent()\n+ synchroniseEnrolment()" "Spring Bean / Adapter"
-
-                    sisClient = component "SISClient" "- restClient: RestClient\n+ getStudentProfile()\n+ getAcademicRecord()\n+ updateEnrolment()" "REST Client"
-
-                    sisMapper = component "SISMapper" "+ mapStudentProfile()\n+ mapAcademicRecord()\n+ mapEnrolment()" "Mapper Utility"
-
-                    sisAdapterCode -> sisClient "Delegates SIS requests"
-                    sisAdapterCode -> sisMapper "Maps SIS data to internal models"
-                }
-
-                group "Security Component" {
-                    securityCodeComponent = component "SecurityComponent" "- tokenValidator: TokenValidator\n+ filterRequest()\n+ enforceAuthorisation()" "Spring Security Filter"
-
-                    tokenValidator = component "TokenValidator" "+ validateToken()\n+ extractClaims()\n+ validateRoles()" "OAuth2 / OIDC Validator"
-
-                    securityCodeComponent -> tokenValidator "Validates access tokens and claims"
-                    securityCodeComponent -> enrolmentController "Authorises requests"
-                    securityCodeComponent -> subjectOfferingController "Authorises requests"
-                    securityCodeComponent -> analyticsController "Authorises requests"
-                }
-
-                group "Domain Model" {
-                    codeUserEntity = component "User Entity" "- userId: UUID\n- oktaSubject: String\n- email: String\n- name: String" "JPA Entity"
-
-                    codeStudentEntity = component "Student Entity" "- studentId: UUID\n- degreeProgram: String\n- academicStanding: String" "JPA Entity"
-
-                    codeFacultyEntity = component "Faculty Entity" "- facultyId: UUID\n- facultyType: String" "JPA Entity"
-
-                    codeSubjectEntity = component "Subject Entity" "- subjectCode: String\n- name: String\n- creditPoints: Int\n- prerequisiteSubjectId: UUID?" "JPA Entity"
-
-                    codeSubjectOfferingEntity = component "Subject Offering Entity" "- offeringId: UUID\n- term: String\n- section: String\n- capacity: Int\n- coordinatorId: UUID\n- enrolmentStart: DateTime\n- enrolmentEnd: DateTime\n- availability: Int" "JPA Entity"
-
-                    codeEnrolmentEntity = component "Enrolment Entity" "- enrolmentId: UUID\n- studentId: UUID\n- offeringId: UUID\n- status: EnrolmentStatus\n- timestamp: DateTime\n- waitlistSequence: Int" "JPA Entity"
-
-                    codeAcademicGradeEntity = component "Academic Grade Entity" "- gradeId: UUID\n- enrolmentId: UUID\n- numericalGrade: Double\n- letterGrade: String" "JPA Entity"
-
-                    codeStudentEntity -> codeUserEntity "Uses User ID as PK/FK"
-                    codeFacultyEntity -> codeUserEntity "Uses User ID as PK/FK"
-                    codeSubjectOfferingEntity -> codeSubjectEntity "References"
-                    codeSubjectOfferingEntity -> codeFacultyEntity "References coordinator"
-                    codeEnrolmentEntity -> codeStudentEntity "References"
-                    codeEnrolmentEntity -> codeSubjectOfferingEntity "References"
-                    codeAcademicGradeEntity -> codeEnrolmentEntity "References"
-                    codeSubjectEntity -> codeSubjectEntity "May reference prerequisite subject"
-                }
-
-                enrolmentService -> codeEnrolmentEntity "Creates and updates"
-                enrolmentService -> codeStudentEntity "Checks student standing"
-                enrolmentService -> codeSubjectOfferingEntity "Checks capacity and availability"
-                enrolmentService -> codeSubjectEntity "Checks prerequisite"
-                subjectOfferingService -> codeSubjectEntity "Reads catalogue data"
-                subjectOfferingService -> codeSubjectOfferingEntity "Manages offerings"
-                analyticsService -> codeAcademicGradeEntity "Queries performance data"
-                enrolmentService -> sisAdapterCode "Verifies academic eligibility"
-                analyticsService -> reportingCodeComponent "Delegates report compilation"
             }
 
             # Separate scheduled analytics pipeline; not part of interactive enrolment or reporting.
@@ -346,13 +251,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             description "C4 Level 3. Shows the ETL pipeline components and their data flow."
             include cms.etl.extractor cms.etl.transformer cms.etl.exportHandler cms.db cms.storage
             exclude "cms.etl -> *"
-            autoLayout lr
-        }
-
-        component cms.backend "CodeView" {
-            title "Code Diagram for Backend API"
-            description "C4 Level 4. Shows the major code-level classes, entities, and dependencies of the Backend API."
-            include cms.backend.enrolmentController cms.backend.enrolmentService cms.backend.seatAvailabilityManager cms.backend.enrolmentQueue cms.backend.subjectOfferingController cms.backend.subjectOfferingService cms.backend.analyticsController cms.backend.analyticsService cms.backend.reportingCodeComponent cms.backend.pdfGenerator cms.backend.sisAdapterCode cms.backend.sisClient cms.backend.sisMapper cms.backend.securityCodeComponent cms.backend.tokenValidator cms.backend.codeUserEntity cms.backend.codeStudentEntity cms.backend.codeFacultyEntity cms.backend.codeSubjectEntity cms.backend.codeSubjectOfferingEntity cms.backend.codeEnrolmentEntity cms.backend.codeAcademicGradeEntity
             autoLayout lr
         }
 

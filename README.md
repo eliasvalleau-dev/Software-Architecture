@@ -5,7 +5,7 @@ Repository to handle Structurizr DSL diagrams
 
 Use `C4Diagram.txt` as the single Structurizr DSL entry point. It contains the
 system context, one logical container view, backend component, ETL component,
-dynamic enrolment flow, code, and production deployment views.
+dynamic enrolment flow, and production deployment views.
 
 The container view is the canonical logical application model: the SPA,
 Backend API, ETL pipeline, availability cache and enrolment queue, operational
@@ -21,6 +21,6 @@ Administrators, and System Administrators.
 Each view explicitly includes only the elements at its C4 abstraction level.
 The Context view uses system-to-system and actor-to-system relationships; the
 Container view uses actor-to-SPA and container-to-container relationships; and
-the component, ETL, code, dynamic, and deployment views use their respective
-relationships. This prevents parent, child, and code-level relationships from
-being rendered as incomplete edges in higher-level diagrams.
+the component, ETL, dynamic, and deployment views use their respective
+relationships. This prevents parent and child relationships from being rendered
+as incomplete edges in higher-level diagrams.
