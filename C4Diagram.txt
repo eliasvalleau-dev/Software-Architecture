@@ -25,11 +25,11 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             tags "Primary System"
 
             # Level 2 Containers
-            spa = container "Course Management SPA" "Provides subject-offering enrolment, availability tracking, and academic reporting interfaces through a web browser." "React / TypeScript" {
+            spa = container "Single-Page Application" "Provides subject-offering enrolment, availability tracking, and academic reporting interfaces through a web browser." "React / TypeScript" {
                 tags "UI Container"
             }
 
-            backend = container "Backend API" "Processes enrolments and subject offerings, serves user-requested academic summaries, generates PDF reports, and integrates with university systems." "Java / Spring Boot (ECS Fargate)" {
+            backend = container "Backend" "Processes enrolments and subject offerings, serves user-requested academic summaries, and generates PDF reports." "Java / Spring Boot" {
                 tags "Backend Container"
 
                 # Level 3 Application Components
@@ -85,7 +85,6 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 academicGradeEntity = component "Academic Grade" "Stores the final numerical and letter grade for an enrolment." "JPA Entity / Logical Data Model" {
                     tags "Component"
                 }
-
             }
 
             # Separate scheduled analytics pipeline; not part of interactive enrolment or reporting.
@@ -105,7 +104,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 }
             }
 
-            cache = container "Availability Cache & Enrolment Queue" "Caches non-authoritative subject-offering availability and buffers incoming enrolment requests; PostgreSQL remains the system of record." "Redis" {
+            cache = container "In-Memory Cache & Queue" "Caches active subject-offering availability and buffers incoming enrolment requests." "Redis" {
                 tags "Cache Store"
             }
 
@@ -124,18 +123,15 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             backend -> storage "Saves and retrieves user-requested PDF reports" "AWS S3 API / HTTPS"
             etl -> db "Extracts approved academic records using read-only queries" "SQL / JDBC (read-only)"
             etl -> storage "Publishes transformed analytics datasets" "AWS S3 API / HTTPS"
-            backend -> idp "Validates signed access tokens and performs authorised identity operations" "OAuth2 / OIDC"
-            backend -> sis "Verifies eligibility and synchronises enrolments" "HTTPS / REST API"
 
             # Level 3 Component Relationships
-            submitEnrolmentRequest = spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
+            spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
             spa -> backend.subjectOfferingApi "Queries subject details and offered sections via" "JSON / HTTPS"
             spa -> backend.analyticsApi "Requests academic performance reports via" "JSON / HTTPS"
 
-            validateEnrolmentRequest = backend.enrolmentApi -> backend.securityComponent "Delegates access-token validation to"
+            backend.enrolmentApi -> backend.securityComponent "Delegates access-token validation to"
             backend.subjectOfferingApi -> backend.securityComponent "Delegates access-token validation to"
             backend.analyticsApi -> backend.securityComponent "Delegates access-token validation to"
-            returnAuthorisationOutcome = backend.securityComponent -> backend.enrolmentApi "Returns the authorisation outcome to"
 
             # Enrolment and subject-offering behaviour
             backend.enrolmentApi -> backend.enrolmentEntity "Creates and updates"
@@ -175,20 +171,23 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
 
             # Security and external integration
             backend.securityComponent -> cache "Validates cached session state in" "Redis Protocol"
-            validateSignedAccessToken = backend.securityComponent -> idp "Uses Okta for user authentication and signed role or group claims via" "OAuth2 / OIDC"
+            backend.securityComponent -> idp "Uses Okta for user authentication and signed role or group claims via" "OAuth2 / OIDC"
             backend.sisAdapter -> sis "Calls REST endpoints on" "HTTPS / REST API"
 
-            storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
+            
+            cms.storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
 
+
+            #Dynamic Diagram Information
+            spa -> backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
+            backend.enrolmentApi -> spa "Validates access token and permissions " "JSON/HTTPS"
+            backend.enrolmentApi -> backend.securityComponent "Validates request using" 
+            backend.securityComponent -> backend.enrolmentApi "Issues an access token if request succeeds" 
+            backend.securityComponent -> db "select * from users where = ?" "SQL Query"
+            db -> backend.securityComponent "Returns user enrolment data to" "SQL Query"
         }
 
-        # System-context actor relationships intentionally target the CMS as a
-        # whole, rather than a container, so the Level 1 view has complete edges.
-        student -> cms "Enrols in subjects and tracks academic standing using" "HTTPS"
-        faculty -> cms "Manages subject offerings and reviews academic analytics using" "HTTPS"
-        academicAdmin -> cms "Oversees subject offerings, enrolments, and academic records using" "HTTPS"
-        admin -> cms "Manages system configuration and operational health using" "HTTPS"
-        # Container-level actor relationships
+        # External Relationships: Actors to Primary System Containers
         student -> cms.spa "Selects subject offerings and checks availability via" "HTTPS"
         faculty -> cms.spa "Manages subject offerings and views analytics via" "HTTPS"
         academicAdmin -> cms.spa "Oversees subject offerings, enrolments, and academic records via" "HTTPS"
@@ -196,23 +195,8 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
     }
 
     views {
-        systemContext cms "SystemContext" {
-            title "System Context Diagram for Course Management System"
-            description "C4 Level 1. Shows the Course Management System, its stakeholders, and external systems."
-            include student
-            include faculty
-            include academicAdmin
-            include admin
-            include cms
-            include idp
-            include sis
-            include analytics
-            exclude "element.parent==cms -> *"
-            exclude "* -> element.parent==cms"
-            exclude "element.parent==cms.backend -> *"
-            exclude "* -> element.parent==cms.backend"
-            exclude "element.parent==cms.etl -> *"
-            exclude "* -> element.parent==cms.etl"
+        systemContext cms "SystemContext" "Level 1: System Context Diagram for Course Management System" {
+            include *
             autoLayout lr
         }
 
@@ -246,27 +230,19 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             autoLayout lr
         }
 
-        component cms.etl "ETLComponentView" {
-            title "Component Diagram for Data Ingestion & ETL"
-            description "C4 Level 3. Shows the ETL pipeline components and their data flow."
-            include cms.etl.extractor cms.etl.transformer cms.etl.exportHandler cms.db cms.storage
-            exclude "cms.etl -> *"
-            autoLayout lr
+        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+            include *
         }
 
-        dynamic cms.backend "DynamicView" {
-            title "Dynamic Diagram for Student Enrolment Request"
-            description "Shows the ordered interactions for a student enrolment request."
+        dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
         
-            submitEnrolmentRequest "Submits enrolment request to"
-            validateEnrolmentRequest "Validates request using"
-            validateSignedAccessToken "Validates signed access token and claims"
-            returnAuthorisationOutcome "Returns authorisation outcome"
+            cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
+            cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
+            cms.backend.enrolmentApi -> cms.backend.securityComponent "Validates request using" 
+            cms.backend.securityComponent -> cms.backend.enrolmentApi "Issues an access token if request succeeds" 
+            cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
+            cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
             autoLayout lr
-        }
-
-        properties {
-            "structurizr.sort" "created"
         }
 
         styles {

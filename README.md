@@ -1,26 +1,17 @@
 # Software-Architecture
 Repository to handle Structurizr DSL diagrams
 
-## Structurizr entry point
+## Structurizr DSL files
 
-Use `C4Diagram.txt` as the single Structurizr DSL entry point. It contains the
-system context, one logical container view, backend component, ETL component,
-dynamic enrolment flow, and production deployment views.
+The diagrams are maintained as separate Structurizr workspaces:
 
-The container view is the canonical logical application model: the SPA,
-Backend API, ETL pipeline, availability cache and enrolment queue, operational
-database, report and data-export storage, and its external integrations. AWS
-delivery, operations, and infrastructure details are represented separately in
-the production deployment view.
+- `C4Diagram.txt` contains the system context, logical container, backend
+  component, ETL component, and dynamic enrolment views. It includes the
+  Academic Administrator stakeholder and retains the latest constrained
+  Container and backend Component Views.
+- `CorrectedCloudArchitecture.txt` contains the focused AWS production
+  deployment overview and Availability Zone B drill-down.
 
-The stakeholder-facing views include Students, Faculty Members, Academic
-Administrators, and System Administrators.
-
-## Relationship scoping
-
-Each view explicitly includes only the elements at its C4 abstraction level.
-The Context view uses system-to-system and actor-to-system relationships; the
-Container view uses actor-to-SPA and container-to-container relationships; and
-the component, ETL, dynamic, and deployment views use their respective
-relationships. This prevents parent and child relationships from being rendered
-as incomplete edges in higher-level diagrams.
+Import or render each file independently. Do not merge these workspaces into a
+single DSL file: their models deliberately use separate element definitions and
+view scopes.
