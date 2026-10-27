@@ -2,9 +2,9 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
 
     model {
         cms = softwareSystem "University Course Management System (UCMS)" "University enrolment and academic records." {
-            spa = container "Course Management SPA" "Browser-based university portal." "React / TypeScript"
+            spa = container "Single-Page Application" "Browser-based university portal." "React / TypeScript"
             backend = container "Backend API" "Handles enrolment, subject offerings, academic records and interactive reports." "Java / Spring Boot"
-            db = container "Operational Database" "Authoritative academic and enrolment records." "Amazon RDS PostgreSQL Multi-AZ"
+            db = container "Operational Relational Database" "Authoritative academic and enrolment records." "Amazon RDS PostgreSQL Multi-AZ"
             cache = container "In-Memory Cache & Queue" "Non-authoritative availability cache and temporary request state." "Amazon ElastiCache Redis"
             storage = container "Report & Data Export Storage" "Private PDFs and approved BI datasets." "Amazon S3"
 
@@ -30,7 +30,7 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
 
             edge = deploymentNode "Global Edge" "Global application delivery; not located inside a Sydney AZ." "AWS Global" {
                 tags "Overview"
-                route53 = infrastructureNode "Route 53" "DNS service for the CMS domain; directs users to the CloudFront distribution." "Amazon Route 53" {
+                route53 = infrastructureNode "Route 53" "DNS service for the UCMS domain; directs users to the CloudFront distribution." "Amazon Route 53" {
                     tags "Overview"
                 }
                 acm = infrastructureNode "AWS Certificate Manager" "Manages TLS certificates for HTTPS: CloudFront certificates reside in us-east-1, while ALB certificates reside in the Sydney region." "AWS Certificate Manager" {
@@ -66,7 +66,7 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
                     }
                 }
 
-                vpc = deploymentNode "CMS VPC" "Two Availability Zones, each with one public and one private subnet." "Amazon VPC" {
+                vpc = deploymentNode "UCMS VPC" "Two Availability Zones, each with one public and one private subnet." "Amazon VPC" {
                     tags "Overview"
 
                     igw = infrastructureNode "Internet Gateway" "VPC-level internet access for the public ALB and public-subnet NAT Gateways; public subnet route tables direct internet-bound traffic here." "AWS Internet Gateway" {
@@ -144,7 +144,7 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
 
             # Only essential request routing is drawn. Shared AWS service access is described in nodes.
             # DNS and certificate configuration: overview only, not AZ B detail.
-            browser -> route53 "Resolves CMS domain" "DNS" {
+            browser -> route53 "Resolves UCMS domain" "DNS" {
                 tags "OverviewFlow"
             }
             route53 -> cloudfront "DNS alias targets CloudFront distribution" "Route 53 alias" {
