@@ -15,3 +15,8 @@ The diagrams are maintained as separate Structurizr workspaces:
 Import or render each file independently. Do not merge these workspaces into a
 single DSL file: their models deliberately use separate element definitions and
 view scopes.
+
+The Container View models the Backend API's direct integrations with Okta and
+the Student Information System. The Backend Component View retains the
+implementation-level Security Component-to-Okta and SIS Adapter-to-SIS
+relationships.

@@ -123,6 +123,8 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             backend -> storage "Saves and retrieves user-requested PDF reports" "AWS S3 API / HTTPS"
             etl -> db "Extracts approved academic records using read-only queries" "SQL / JDBC (read-only)"
             etl -> storage "Publishes transformed analytics datasets" "AWS S3 API / HTTPS"
+            backend -> idp "Uses Okta for OIDC authentication and authorised identity operations" "OAuth2 / OIDC"
+            backend -> sis "Verifies eligibility and synchronises enrolments" "HTTPS / REST API"
 
             # Level 3 Component Relationships
             spa -> backend.enrolmentApi "Submits enrolment requests and checks seat counts via" "JSON / HTTPS"
