@@ -1,4 +1,4 @@
-workspace "Course Management System" "Architectural Design and C4 Models" {
+workspace "University Course Management System (UCMS)" "Architectural Design and C4 Models" {
 
     !identifiers hierarchical
 
@@ -21,7 +21,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
         }
 
         # Primary System Boundary
-        cms = softwareSystem "Course Management System" "Provides real-time subject-offering enrolment, academic-grade tracking, and reporting analytics tools." {
+        cms = softwareSystem "University Course Management System (UCMS)" "Provides real-time subject-offering enrolment, academic-grade tracking, and reporting analytics tools." {
             tags "Primary System"
 
             # Level 2 Containers
@@ -29,7 +29,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
                 tags "UI Container"
             }
 
-            backend = container "Backend" "Processes enrolments and subject offerings, serves user-requested academic summaries, and generates PDF reports." "Java / Spring Boot" {
+            backend = container "Backend API" "Processes enrolments and subject offerings, serves user-requested academic summaries, and generates PDF reports." "Java / Spring Boot" {
                 tags "Backend Container"
 
                 # Level 3 Application Components
@@ -197,13 +197,13 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
     }
 
     views {
-        systemContext cms "SystemContext" "Level 1: System Context Diagram for Course Management System" {
+        systemContext cms "SystemContext" "Level 1: System Context Diagram for University Course Management System (UCMS)" {
             include *
             autoLayout lr
         }
 
         container cms "ContainerView" {
-            title "Container Diagram for Course Management System"
+            title "Container Diagram for University Course Management System (UCMS)"
             description "C4 Level 2. Shows the canonical logical application containers and their interactions."
             include student
             include faculty
@@ -236,7 +236,7 @@ workspace "Course Management System" "Architectural Design and C4 Models" {
             include *
         }
 
-        dynamic cms.backend "DynamicView" "Dynamic: Course Management System" {
+        dynamic cms.backend "DynamicView" "Dynamic: University Course Management System (UCMS)" {
         
             cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
             cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"

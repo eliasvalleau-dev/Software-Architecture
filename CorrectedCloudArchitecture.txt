@@ -1,12 +1,12 @@
-workspace "Course Management System - Focused AWS Deployment" "Compact production overview with an Availability Zone B drill-down." {
+workspace "University Course Management System (UCMS) - Focused AWS Deployment" "Compact production overview with an Availability Zone B drill-down." {
 
     model {
-        cms = softwareSystem "Course Management System" "University enrolment and academic records." {
+        cms = softwareSystem "University Course Management System (UCMS)" "University enrolment and academic records." {
             spa = container "Course Management SPA" "Browser-based university portal." "React / TypeScript"
             backend = container "Backend API" "Handles enrolment, subject offerings, academic records and interactive reports." "Java / Spring Boot"
             db = container "Operational Database" "Authoritative academic and enrolment records." "Amazon RDS PostgreSQL Multi-AZ"
-            cache = container "Availability Cache" "Non-authoritative availability cache and temporary request state." "Amazon ElastiCache Redis"
-            storage = container "Reports & Analytics Exports" "Private PDFs and approved BI datasets." "Amazon S3"
+            cache = container "In-Memory Cache & Queue" "Non-authoritative availability cache and temporary request state." "Amazon ElastiCache Redis"
+            storage = container "Report & Data Export Storage" "Private PDFs and approved BI datasets." "Amazon S3"
 
             # Logical data flows: kept out of the deployment diagrams for clarity.
             backend -> db "Reads and writes operational records" "SQL / JDBC" {
@@ -95,7 +95,7 @@ workspace "Course Management System - Focused AWS Deployment" "Compact productio
                         }
                         privateA = deploymentNode "Private Subnet A" "ECS and data resources; restrictive security groups isolate the database and cache." "Subnet" {
                             tags "Overview,Private"
-                            taskA = deploymentNode "Backend Fargate Task A" "Representative backend task; service capacity scales with demand." "AWS ECS Fargate" {
+                            taskA = deploymentNode "Backend API Fargate Task A" "Representative backend task; service capacity scales with demand." "AWS ECS Fargate" {
                                 tags "Overview"
                                 backendA = containerInstance backend {
                                     tags "Overview"
@@ -121,7 +121,7 @@ workspace "Course Management System - Focused AWS Deployment" "Compact productio
                         }
                         privateB = deploymentNode "Private Subnet B" "ECS and standby data resources; security groups restrict access." "Subnet" {
                             tags "AZBDetail,AZBInternal,Private"
-                            taskB = deploymentNode "Backend Fargate Task B" "Runs at peak or when scheduled for recovery; not necessarily active off-peak." "AWS ECS Fargate" {
+                            taskB = deploymentNode "Backend API Fargate Task B" "Runs at peak or when scheduled for recovery; not necessarily active off-peak." "AWS ECS Fargate" {
                                 tags "AZBDetail,AZBInternal"
                                 backendB = containerInstance backend {
                                     tags "AZBDetail,AZBInternal"
@@ -190,7 +190,7 @@ workspace "Course Management System - Focused AWS Deployment" "Compact productio
 
     views {
         deployment * "Production" "ProductionOverview" {
-            title "CMS Production Deployment - Overview"
+            title "UCMS Production Deployment - Overview"
             description "AZ A expanded and AZ B represented by a single clickable summary. One ALB spans public subnets in both AZs; regional AWS services are shared."
             include "element.tag==Overview"
             # Explicitly hide every AZ B child and its detailed deployment node.
