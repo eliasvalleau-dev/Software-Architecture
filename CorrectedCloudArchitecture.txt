@@ -190,8 +190,8 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
 
     views {
         deployment * "Production" "ProductionOverview" {
-            title "UCMS Production Deployment - Overview"
-            description "AZ A expanded and AZ B represented by a single clickable summary. One ALB spans public subnets in both AZs; regional AWS services are shared."
+            title "Production Deployment Diagram for University Course Management System (UCMS)"
+            description "C4 deployment view. Shows global, regional, and multi-AZ production infrastructure."
             include "element.tag==Overview"
             # Explicitly hide every AZ B child and its detailed deployment node.
             # Otherwise Structurizr can include backendB via the ALB relationship.
@@ -201,8 +201,8 @@ workspace "University Course Management System (UCMS) - Focused AWS Deployment" 
         }
 
         deployment * "Production" "AvailabilityZoneBDetail" {
-            title "Availability Zone B - Infrastructure and Recovery"
-            description "AZ B public/private subnets, NAT, ECS backend task, RDS standby and Redis replica with the shared ALB. AZ A and regional services are omitted."
+            title "Deployment Detail for Availability Zone B"
+            description "C4 deployment view. Shows AZ B networking, Backend API capacity, and recovery infrastructure."
             include "element.tag==AZBDetail"
             exclude "relationship.tag==InternalDataFlow"
             exclude "relationship.tag==OverviewFlow"

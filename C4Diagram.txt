@@ -197,7 +197,8 @@ workspace "University Course Management System (UCMS)" "Architectural Design and
     }
 
     views {
-        systemContext cms "SystemContext" "Level 1: System Context Diagram for University Course Management System (UCMS)" {
+        systemContext cms "SystemContext" "C4 Level 1. Shows UCMS, its users, and external software systems." {
+            title "System Context Diagram for University Course Management System (UCMS)"
             include *
             autoLayout lr
         }
@@ -232,11 +233,13 @@ workspace "University Course Management System (UCMS)" "Architectural Design and
             autoLayout lr
         }
 
-        component cms.etl "ETLComponentView" "Level 3: Data Ingestion and ETL Pipeline" {
+        component cms.etl "ETLComponentView" "C4 Level 3. Shows the Data Ingestion & ETL components and their supporting data stores." {
+            title "Component Diagram for Data Ingestion & ETL"
             include *
         }
 
-        dynamic cms.backend "DynamicView" "Dynamic: University Course Management System (UCMS)" {
+        dynamic cms.backend "DynamicView" "C4 dynamic view. Shows the current enrolment-request authorisation interactions." {
+            title "Dynamic Diagram for Enrolment Request Authorisation"
         
             cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
             cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
