@@ -180,13 +180,11 @@ workspace "University Course Management System (UCMS)" "Architectural Design and
             cms.storage -> analytics "Provides transformed analytics datasets for dashboards" "Amazon S3"
 
 
-            #Dynamic Diagram Information
-            spa -> backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
-            backend.enrolmentApi -> spa "Validates access token and permissions " "JSON/HTTPS"
-            backend.enrolmentApi -> backend.securityComponent "Validates request using" 
-            backend.securityComponent -> backend.enrolmentApi "Issues an access token if request succeeds" 
-            backend.securityComponent -> db "select * from users where = ?" "SQL Query"
-            db -> backend.securityComponent "Returns user enrolment data to" "SQL Query"
+            # Dynamic Diagram Information
+            spa -> backend.enrolmentApi "Submits protected enrolment request with bearer token to" "JSON / HTTPS"
+            backend.enrolmentApi -> backend.securityComponent "Delegates signed Okta token and role-claim validation to"
+            backend.securityComponent -> backend.enrolmentApi "Returns allow/deny authorisation decision to"
+            backend.enrolmentApi -> spa "Returns 401/403 if unauthorised; otherwise continues allocation" "JSON / HTTPS"
         }
 
         # External Relationships: Actors to Primary System Containers
@@ -238,15 +236,13 @@ workspace "University Course Management System (UCMS)" "Architectural Design and
             include *
         }
 
-        dynamic cms.backend "DynamicView" "C4 dynamic view. Shows the current enrolment-request authorisation interactions." {
-            title "Dynamic Diagram for Enrolment Request Authorisation"
+        dynamic cms.backend "DynamicView" "C4 dynamic view. Shows enrolment-request authentication and authorisation before allocation." {
+            title "Dynamic Diagram for Enrolment Request Authentication and Authorisation"
         
-            cms.spa -> cms.backend.enrolmentApi "Submits enrolment request to" "JSON/HTTPS"
-            cms.backend.enrolmentApi -> cms.spa "Validates access token and permissions " "JSON/HTTPS"
-            cms.backend.enrolmentApi -> cms.backend.securityComponent "Validates request using" 
-            cms.backend.securityComponent -> cms.backend.enrolmentApi "Issues an access token if request succeeds" 
-            cms.backend.securityComponent -> cms.db "select * from users where = ?" "SQL Query"
-            cms.db -> cms.backend.securityComponent "Returns user enrolment data to" "SQL Query"
+            cms.spa -> cms.backend.enrolmentApi "Submits protected enrolment request with bearer token to" "JSON / HTTPS"
+            cms.backend.enrolmentApi -> cms.backend.securityComponent "Delegates signed Okta token and role-claim validation to"
+            cms.backend.securityComponent -> cms.backend.enrolmentApi "Returns allow/deny authorisation decision to"
+            cms.backend.enrolmentApi -> cms.spa "Returns 401/403 if unauthorised; otherwise continues allocation" "JSON / HTTPS"
             autoLayout lr
         }
 
